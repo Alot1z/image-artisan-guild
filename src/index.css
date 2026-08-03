@@ -157,8 +157,8 @@
 /* Typography stack — elegant serif hierarchy */
 @layer base {
   :root {
-    --font-display: "Cormorant Garamond", "EB Garamond", "Garamond", "Times New Roman", serif;
-    --font-body: "EB Garamond", "Garamond", "Times New Roman", serif;
+    --font-display: "Playfair Display", "Cormorant Garamond", "EB Garamond", "Garamond", "Times New Roman", serif;
+    --font-body: "EB Garamond", "Merriweather", "Garamond", "Times New Roman", serif;
     --font-script: "IM Fell English", "Caveat", "Apple Chancery", cursive;
     --font-mono: "JetBrains Mono", "Courier New", monospace;
   }

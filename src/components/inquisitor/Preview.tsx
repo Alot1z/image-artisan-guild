@@ -1,6 +1,6 @@
 // Image preview plate — vintage framed snapshot with rotation controls.
 import { useState } from "react";
-import { RotateCw, RotateCcw, ExternalLink, Copy, Download, Trash2 } from "lucide-react";
+import { RotateCw, RotateCcw, ExternalLink, Copy, Download, Trash2, Crop } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { InquiryAsset } from "@/lib/inquiry-store";
@@ -26,9 +26,10 @@ interface Props {
   hostedUrl?: string | null;
   onCopyUrl?: (url: string) => void;
   onDownload?: (asset: InquiryAsset) => void;
+  onCrop?: (asset: InquiryAsset) => void;
 }
 
-export function Preview({ assets, activeId, onSelect, onRotation, onRemove, hostedUrl, onCopyUrl, onDownload }: Props) {
+export function Preview({ assets, activeId, onSelect, onRotation, onRemove, hostedUrl, onCopyUrl, onDownload, onCrop }: Props) {
   const asset = assets.find((a) => a.id === activeId) ?? null;
   const [hovered, setHovered] = useState(false);
 
@@ -99,6 +100,11 @@ export function Preview({ assets, activeId, onSelect, onRotation, onRemove, host
           {hostedUrl && onCopyUrl && (
             <Button size="icon" variant="ghost" title="Copy hosted URL" onClick={() => onCopyUrl(hostedUrl)} className="text-[color-mix(in_oklab,var(--ink)_75%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]">
               <Copy className="h-4 w-4" />
+            </Button>
+          )}
+          {onCrop && (
+            <Button size="icon" variant="ghost" title="Crop the plate" onClick={() => onCrop(asset)} className="text-[color-mix(in_oklab,var(--ink)_75%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]">
+              <Crop className="h-4 w-4" />
             </Button>
           )}
           {onDownload && (

@@ -13,6 +13,8 @@ import { Preview } from "@/components/inquisitor/Preview";
 import { Engines, useUploader } from "@/components/inquisitor/Engines";
 import { Sidebar } from "@/components/inquisitor/Sidebar";
 import { History } from "@/components/inquisitor/History";
+import { Cropper } from "@/components/inquisitor/Cropper";
+import { convertAndDownload } from "@/lib/format";
 
 import {
   useInquiryStore,
@@ -31,6 +33,7 @@ export default function Inquisitor() {
   const [uploadingLocal, setUploadingLocal] = useState<Record<string, boolean>>({});
   const [dragging, setDragging] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [cropTarget, setCropTarget] = useState<InquiryAsset | null>(null);
   const dragCounter = useRef(0);
 
   // Open the right view if ?view=history
@@ -262,6 +265,7 @@ export default function Inquisitor() {
                   toast({ title: "URL copied" });
                 }}
                 onDownload={(a) => downloadBlob(a.blob, a.fileName ?? `inquisitor-${a.id}.jpg`)}
+                onCrop={(a) => setCropTarget(a)}
               />
               <Engines
                 assets={store.assets}
@@ -300,6 +304,45 @@ export default function Inquisitor() {
 
       {/* Drop overlay */}
       <DropZone active={dragging} onFiles={() => undefined} />
+
+      {/* Format converter strip */}
+      {active && (
+        <div className="archive-card relative mt-3 overflow-hidden rounded-lg px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="eyebrow">Convert the plate</p>
+            <div className="flex items-center gap-2">
+              {(["image/jpeg", "image/png", "image/webp"] as const).map((fmt) => (
+                <Button
+                  key={fmt}
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const result = await convertAndDownload(active.blob, fmt, active.fileName?.replace(/\.[^.]+$/, "") ?? `inquisitor-${active.id}`, 0.92);
+                    toast({ title: "Conversion complete", description: result.label });
+                  }}
+                  className="gap-1 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] font-display italic text-xs"
+                >
+                  {fmt.split("/")[1].toUpperCase()}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cropper modal */}
+      {cropTarget && (
+        <Cropper
+          asset={cropTarget}
+          open={cropTarget !== null}
+          onClose={() => setCropTarget(null)}
+          onCropped={(assetId, croppedBlob) => {
+            store.replaceAsset(assetId, { blob: croppedBlob, size: croppedBlob.size });
+            setCropTarget(null);
+            toast({ title: "Plate trimmed", description: "The crop has been applied to your inquiry." });
+          }}
+        />
+      )}
 
       {/* History drawer */}
       <History

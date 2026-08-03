@@ -1,9 +1,11 @@
 // The Image Inquisitor — the full reverse-image engineering workbench.
+// Wires the dispatch pipeline, regional GPS hints, palette tinting, the
+// format-converter strip, the cropper, the records drawer, and the paste/
+// drop-anywhere handlers.
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Compass, Library, MousePointerClick,
-} from "lucide-react";
+import { Compass, Library, MousePointerClick } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/utils";
@@ -22,7 +24,10 @@ import {
   SOURCE_LABELS,
 } from "@/lib/inquiry-store";
 import { ENGINES, dispatchByForm, openByUrl } from "@/lib/engines";
-import type { HistoryEntry } from "@/lib/history";import { blobToDataUrl } from "@/lib/image-utils";
+import type { HistoryEntry } from "@/lib/history";
+import { blobToDataUrl } from "@/lib/image-utils";
+import { readGeoPoint } from "@/lib/exif";
+import { suggestedEngineIds, commonNameForGeo } from "@/lib/region";
 import logo from "@/assets/logo.svg";
 
 export default function Inquisitor() {
@@ -35,12 +40,12 @@ export default function Inquisitor() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<InquiryAsset | null>(null);
   const dragCounter = useRef(0);
+  const autoTickedFor = useRef<Set<string>>(new Set());
 
-  // Open the right view if ?view=history
+  // Open ?view=history or ?action=camera
   useEffect(() => {
     if (params.get("view") === "history") setHistoryOpen(true);
     if (params.get("action") === "camera") {
-      // trigger native camera picker if available
       setTimeout(() => {
         const el = document.querySelector<HTMLInputElement>("input[capture]");
         el?.click();
@@ -48,7 +53,7 @@ export default function Inquisitor() {
     }
   }, [params]);
 
-  // Paste anywhere on the page
+  // Paste anywhere
   useEffect(() => {
     const handler = (event: ClipboardEvent) => {
       if (event.clipboardData) {
@@ -78,7 +83,7 @@ export default function Inquisitor() {
       dragCounter.current += 1;
       setDragging(true);
     };
-    const onLeave = (e: DragEvent) => {
+    const onLeave = () => {
       dragCounter.current -= 1;
       if (dragCounter.current <= 0) {
         dragCounter.current = 0; setDragging(false);
@@ -105,6 +110,35 @@ export default function Inquisitor() {
 
   const active = store.assets.find((a) => a.id === store.activeId) ?? null;
 
+  // Derive geo hint from the active plate's EXIF.
+  const geoPoint = active ? readGeoPoint(active.exif ?? {}) : null;
+  const regionLabel = geoPoint ? commonNameForGeo(geoPoint) : null;
+
+  /**
+   * Auto-tick regional engines when EXIF reveals a GPS origin.
+   * Runs *once per plate id* so the user's later manual removal of a
+   * suggested engine is preserved (no re-add flicker).
+   */
+  useEffect(() => {
+    if (!active || !geoPoint) return;
+    if (autoTickedFor.current.has(active.id)) return;
+    const suggested = suggestedEngineIds(geoPoint);
+    if (suggested.length === 0) {
+      autoTickedFor.current.add(active.id);
+      return;
+    }
+    const existing = new Set(active.engines);
+    const newOnes = suggested.filter((id) => !existing.has(id));
+    autoTickedFor.current.add(active.id);
+    if (newOnes.length === 0) return;
+    store.setEngines(active.id, [...active.engines, ...newOnes]);
+    toast({
+      title: `${newOnes.length} regional engine${newOnes.length === 1 ? "" : "s"} pre-ticked`,
+      description: `Origin near ${regionLabel}. Adjust as needed.`,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, regionLabel]);
+
   const handleSource = useCallback(async (source: InquiryAsset["source"], payload: Blob) => {
     await store.add(source, payload);
   }, [store]);
@@ -123,10 +157,7 @@ export default function Inquisitor() {
       const dataUrl = await blobToDataUrl(asset.blob);
       const url = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
       store.setHostedUrl(id, url);
-      toast({
-        title: "Hosted",
-        description: "The plate is now reachable from any catalogue engine.",
-      });
+      toast({ title: "Hosted", description: "The plate is now reachable from any catalogue engine." });
     } catch (err) {
       console.error(err);
       toast({
@@ -139,9 +170,6 @@ export default function Inquisitor() {
     }
   }, [store, uploader]);
 
-  // Dispatch current asset to selected engines. Form-upload engines go via
-  // hidden form submissions; URL engines either use our hosted URL or open
-  // an informational page if no host is available yet.
   const ensureHostThenDispatch = useCallback(async (asset: InquiryAsset, ids: string[]) => {
     const needsHost = ids.some((id) => ENGINES.find((e) => e.id === id)?.mode === "url-open");
     let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
@@ -168,20 +196,19 @@ export default function Inquisitor() {
         try {
           form.submit();
           setTimeout(() => form.remove(), 30_000);
-        } catch {
-          form.remove();
-        }
+        } catch { form.remove(); }
       } else if (engine.mode === "url-open" && hosted) {
         openByUrl(engine, hosted);
       }
     }
-    // Record the inquiry
     await store.recordAll({ prompt });
   }, [store, uploader, prompt]);
 
+  const activeGeoForEngines = geoPoint;
+  const activeRegionLabel = regionLabel ?? undefined;
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Top crest */}
       <header className="paper-grain sticky top-0 z-30 border-b border-[color-mix(in_oklab,var(--ink)_25%,transparent)] backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <Link to="/" className="flex items-center gap-3">
@@ -207,7 +234,6 @@ export default function Inquisitor() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-        {/* Masthead strip */}
         <div className="flex items-center justify-between gap-3 pb-6">
           <div>
             <p className="eyebrow">Volume I · Field Desk</p>
@@ -220,7 +246,6 @@ export default function Inquisitor() {
           </p>
         </div>
 
-        {/* Input hub */}
         <InputHub
           onSelect={(s, b) => handleSource(s as InquiryAsset["source"], b as Blob)}
           onPaste={(b) => handleSource("clipboard", b)}
@@ -228,7 +253,6 @@ export default function Inquisitor() {
           busy={store.busy}
         />
 
-        {/* Empty state helper */}
         {store.assets.length === 0 && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -249,7 +273,6 @@ export default function Inquisitor() {
           </motion.div>
         )}
 
-        {/* Preview + sidebar */}
         {store.assets.length > 0 && (
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
             <div className="space-y-6">
@@ -267,6 +290,34 @@ export default function Inquisitor() {
                 onDownload={(a) => downloadBlob(a.blob, a.fileName ?? `inquisitor-${a.id}.jpg`)}
                 onCrop={(a) => setCropTarget(a)}
               />
+              {active && (
+                <div className="archive-card relative overflow-hidden rounded-lg px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="eyebrow">Convert the plate</p>
+                    <div className="flex items-center gap-2">
+                      {(["image/jpeg", "image/png", "image/webp"] as const).map((fmt) => (
+                        <Button
+                          key={fmt}
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const result = await convertAndDownload(
+                              active.blob,
+                              fmt,
+                              active.fileName?.replace(/\.[^.]+$/, "") ?? `inquisitor-${active.id}`,
+                              0.92,
+                            );
+                            toast({ title: "Conversion complete", description: result.label });
+                          }}
+                          className="gap-1 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] font-display italic text-xs"
+                        >
+                          {fmt.split("/")[1].toUpperCase()}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <Engines
                 assets={store.assets}
                 activeId={store.activeId}
@@ -286,6 +337,8 @@ export default function Inquisitor() {
                 onPromptChange={setPrompt}
                 notes={active?.notes ?? ""}
                 onNotesChange={(v) => active && store.setNotes(active.id, v)}
+                geoHint={activeGeoForEngines}
+                regionLabel={activeRegionLabel}
               />
             </div>
             <Sidebar
@@ -302,35 +355,8 @@ export default function Inquisitor() {
         )}
       </main>
 
-      {/* Drop overlay */}
       <DropZone active={dragging} onFiles={() => undefined} />
 
-      {/* Format converter strip */}
-      {active && (
-        <div className="archive-card relative mt-3 overflow-hidden rounded-lg px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="eyebrow">Convert the plate</p>
-            <div className="flex items-center gap-2">
-              {(["image/jpeg", "image/png", "image/webp"] as const).map((fmt) => (
-                <Button
-                  key={fmt}
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const result = await convertAndDownload(active.blob, fmt, active.fileName?.replace(/\.[^.]+$/, "") ?? `inquisitor-${active.id}`, 0.92);
-                    toast({ title: "Conversion complete", description: result.label });
-                  }}
-                  className="gap-1 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] font-display italic text-xs"
-                >
-                  {fmt.split("/")[1].toUpperCase()}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cropper modal */}
       {cropTarget && (
         <Cropper
           asset={cropTarget}
@@ -344,7 +370,6 @@ export default function Inquisitor() {
         />
       )}
 
-      {/* History drawer */}
       <History
         open={historyOpen}
         entries={store.history}

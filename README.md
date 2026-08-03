@@ -1,272 +1,198 @@
-## Overview
+# The Image Inquisitor
 
-This project uses the following tech stack:
-- Vite
-- Typescript
-- React Router v7 (all imports from `react-router` instead of `react-router-dom`)
-- React 19 (for frontend components)
-- Tailwind v4 (for styling)
-- Shadcn UI (for UI components library)
-- Lucide Icons (for icons)
-- Convex (for backend & database)
-- Convex Auth (for authentication)
-- Framer Motion (for animations)
-- Three js (for 3d models)
+> A vintage reverse-image engineering workbench for the web.
 
-All relevant files live in the 'src' directory.
+Take a photograph, drop a frame, paste from the clipboard, or fetch from the web —
+the Inquisitor pulls **EXIF, palette, perceptual hash**, and reads the image
+against **41 reverse-image services** organised into **4 tiers**, all from a
+mobile-first, installable, vintage sepia PWA.
 
-Use bun for the package manager.
+No accounts. No tracking. Search history is locked to your browser's IndexedDB.
 
-## Setup
+---
 
-This project is set up already and running on a cloud environment, as well as a convex development in the sandbox.
+## How a reverse-image inquiry flows
 
-## Environment Variables
-
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side.
-
-The convex server has a separate set of environment variables that are accessible by the convex backend.
-
-Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
-
-
-# Using Authentication (Important!)
-
-You must follow these conventions when using authentication.
-
-## Auth is already set up.
-
-All convex authentication functions are already set up. The auth currently uses email OTP and anonymous users, but can support more.
-
-The email OTP configuration is defined in `src/convex/auth/emailOtp.ts`. DO NOT MODIFY THIS FILE.
-
-Also, DO NOT MODIFY THESE AUTH FILES: `src/convex/auth.config.ts` and `src/convex/auth.ts`.
-
-## Using Convex Auth on the backend
-
-On the `src/convex/users.ts` file, you can use the `getCurrentUser` function to get the current user's data.
-
-## Using Convex Auth on the frontend
-
-The `/auth` page is already set up to use auth. Navigate to `/auth` for all log in / sign up sequences.
-
-You MUST use this hook to get user data. Never do this yourself without the hook:
-```typescript
-import { useAuth } from "@/hooks/use-auth";
-
-const { isLoading, isAuthenticated, user, signIn, signOut } = useAuth();
+```mermaid
+flowchart LR
+  subgraph Receipt
+    A1[Camera] --> R[Plate]
+    A2[Gallery] --> R
+    A3[Web URL] --> R
+    A4[Files] --> R
+    A5[Clipboard] --> R
+    R --> R2[Drag/drop anywhere]
+  end
+  R2 -->|EXIF + GPS| Hint[Region hint]
+  R2 -->|palette| Tint[UI tint]
+  R2 -->|aHash| Dup[Duplicate scan]
+  R2 --> Engines{Catalogue}
+  Engines -->|form-upload| Out1[TinEye · SauceNAO · PimEyes …]
+  Engines -->|needs host| Host[Convex storeImage]
+  Host -->|URL| Out2[Bing · Yandex · Baidu · Naver …]
+  Out1 --> Records[(IndexedDB)]
+  Out2 --> Records
+  Records --> Drawer[Records drawer · Masonry]
 ```
 
-## Protected Routes
+---
 
-The starter `/dashboard` route is protected with `RequireAuth`, which sends
-signed-out users to `/auth?returnTo=<current route>`. Extend that page for the
-product's authenticated experience, and reuse `RequireAuth` when adding another
-protected route.
+## Features at a glance
 
-## Auth Page
+- **Five modes of receipt** — camera, gallery, web URL, files, clipboard plus
+  paste-anywhere (⌘/Ctrl-V) and drop-anywhere.
+- **EXIF reading** — camera, lens, ISO, aperture, date, and **GPS lat/lon**.
+- **GPS-driven regional auto-tick** — Yandex & FindClone for Russian plates;
+  Baidu, Sogou, Naver, trace.moe for East-Asian plates; Ecosia for European.
+- **Palette extraction** — k-means top-5 dominant pigments, with **dynamic UI
+  tinting** that pulls the brass and burgundy accents toward the plate's mood.
+- **Perceptual seal** — 64-bit aHash (Hamming-similarity duplicate spotting).
+- **Format converter** — JPEG ⇄ PNG ⇄ WebP with quality slider.
+- **Cropper** — freehand drag-resize with preset aspect ratios.
+- **41-engine catalogue** organised into **four tiers**:
+  - **Tier I**: Google Lens · Bing · Yandex · TinEye · Baidu · Sogou · Naver · Qihoo · Picsearch · Mail.ru · Ecosia
+  - **Tier II**: Lenso.ai · PimEyes · FaceCheck.ID · Search4Faces · Berify · FindClone
+  - **Tier III**: Pinterest · Amazon · eBay · AliExpress · Shutterstock · Getty · Alamy · iStock · Adobe Stock · GIPHY
+  - **Tier IV**: SauceNAO · ASCII2D · IQDB · 3DIQI · trace.moe · WhatAnime · Karma Decay · ImageRaider · Snapdraw · Noop · Google RIS · Yandex (RU) · TinEye Multicolor · SearchEngine.Report
+- **History drawer** with **CSS-columns masonry** and **filter chips** for
+  Face / Exact-Match / E-Commerce / Anime / Stock.
+- **iOS / Android installable** — `display: standalone`, `apple-touch-icon`,
+  192/512/maskable icons, service-worker offline shell.
+- **Privacy-first** — no server account, no tracking, history in IndexedDB
+  only.
 
-The auth page is defined in `src/pages/Auth.tsx`. Send sign-in and sign-up actions
-to `/auth`.
+---
 
-## Authorization
+## Quick start
 
-You can perform authorization checks on the frontend and backend.
+<details>
+<summary><strong>Local development</strong></summary>
 
-On the frontend, you can use the `useAuth` hook to get the current user's data and authentication state.
+This project is set up already and runs on a cloud environment + Convex dev in
+the sandbox. To run it elsewhere:
 
-You should also be protecting queries, mutations, and actions at the base level, checking for authorization securely.
-
-## Adding a redirect after auth
-
-The `/auth` route in `src/main.tsx` redirects to `/dashboard` by default. If the
-product's main authenticated route is different, update `redirectAfterAuth` to
-that route. A validated same-origin `returnTo` query parameter takes priority so
-users can resume the protected page they originally requested. Never leave an
-authenticated product redirecting back to the public landing page.
-
-## Complete authenticated products
-
-When the requested product implies accounts, a workspace, a dashboard, or other
-signed-in functionality, the task is not complete with only a landing page and
-auth form. Build the main authenticated experience, protect its route, and verify
-that signing in reaches it.
-
-# Frontend Conventions
-
-You will be using the Vite frontend with React 19, Tailwind v4, and Shadcn UI.
-
-Generally, pages should be in the `src/pages` folder, and components should be in the `src/components` folder.
-
-Shadcn primitives are located in the `src/components/ui` folder and should be used by default.
-
-## Page routing
-
-Your page component should go under the `src/pages` folder.
-
-When adding a page, update the react router configuration in `src/main.tsx` to include the new route you just added.
-
-## Shad CN conventions
-
-Follow these conventions when using Shad CN components, which you should use by default.
-- Remember to use "cursor-pointer" to make the element clickable
-- For title text, use the "tracking-tight font-bold" class to make the text more readable
-- Always make apps MOBILE RESPONSIVE. This is important
-- AVOID NESTED CARDS. Try and not to nest cards, borders, components, etc. Nested cards add clutter and make the app look messy.
-- AVOID SHADOWS. Avoid adding any shadows to components. stick with a thin border without the shadow.
-- Avoid skeletons; instead, use the loader2 component to show a spinning loading state when loading data.
-
-
-## Landing Pages
-
-You must always create good-looking designer-level styles to your application. 
-- Make it well animated and fit a certain "theme", ie neo brutalist, retro, neumorphism, glass morphism, etc
-
-Use known images and emojis from online.
-
-If the user is logged in already, show the get started button to say "Dashboard" or "Profile" instead to take them there.
-
-## Responsiveness and formatting
-
-Make sure pages are wrapped in a container to prevent the width stretching out on wide screens. Always make sure they are centered aligned and not off-center.
-
-Always make sure that your designs are mobile responsive. Verify the formatting to ensure it has correct max and min widths as well as mobile responsiveness.
-
-- Always create sidebars for protected dashboard pages and navigate between pages
-- Always create navbars for landing pages
-- On these bars, the created logo should be clickable and redirect to the index page
-
-## Animating with Framer Motion
-
-You must add animations to components using Framer Motion. It is already installed and configured in the project.
-
-To use it, import the `motion` component from `framer-motion` and use it to wrap the component you want to animate.
-
-
-### Other Items to animate
-- Fade in and Fade Out
-- Slide in and Slide Out animations
-- Rendering animations
-- Button clicks and UI elements
-
-Animate for all components, including on landing page and app pages.
-
-## Three JS Graphics
-
-Your app comes with three js by default. You can use it to create 3D graphics for landing pages, games, etc.
-
-
-## Colors
-
-You can override colors in: `src/index.css`
-
-This uses the oklch color format for tailwind v4.
-
-Always use these color variable names.
-
-Make sure all ui components are set up to be mobile responsive and compatible with both light and dark mode.
-
-Set theme using `dark` or `light` variables at the parent className.
-
-## Styling and Theming
-
-When changing the theme, always change the underlying theme of the shad cn components app-wide under `src/components/ui` and the colors in the index.css file.
-
-Avoid hardcoding in colors unless necessary for a use case, and properly implement themes through the underlying shad cn ui components.
-
-When styling, ensure buttons and clickable items have pointer-click on them (don't by default).
-
-Always follow a set theme style and ensure it is tuned to the user's liking.
-
-## Toasts
-
-You should always use toasts to display results to the user, such as confirmations, results, errors, etc.
-
-Use the shad cn Sonner component as the toaster. For example:
-
-```
-import { toast } from "sonner"
-
-import { Button } from "@/components/ui/button"
-export function SonnerDemo() {
-  return (
-    <Button
-      variant="outline"
-      onClick={() =>
-        toast("Event has been created", {
-          description: "Sunday, December 03, 2023 at 9:00 AM",
-          action: {
-            label: "Undo",
-            onClick: () => console.log("Undo"),
-          },
-        })
-      }
-    >
-      Show Toast
-    </Button>
-  )
-}
+```bash
+bun install
+bun convex dev --once    # ensure Convex types are generated
+bun dev                  # start Vite
 ```
 
-Remember to import { toast } from "sonner". Usage: `toast("Event has been created.")`
+Open `http://localhost:5173` and click **Open Workbench**. From iOS Safari,
+tap share → *Add to Home Screen*.
 
-## Dialogs
+</details>
 
-Always ensure your larger dialogs have a scroll in its content to ensure that its content fits the screen size. Make sure that the content is not cut off from the screen.
+<details>
+<summary><strong>Environment variables</strong></summary>
 
-Ideally, instead of using a new page, use a Dialog instead. 
+The project is set up with project-specific `CONVEX_DEPLOYMENT` and
+`VITE_CONVEX_URL` environment variables on the client side.
 
-# Using the Convex backend
+The Convex server has its own set, currently:
 
-You will be implementing the convex backend. Follow your knowledge of convex and the documentation to implement the backend.
+- `JWKS`
+- `JWT_PRIVATE_KEY`
+- `SITE_URL`
 
-## The Convex Schema
+These are managed through the **Keys / API keys** UI — *do not* commit a
+`.env` file.
 
-You must correctly follow the convex schema implementation.
+</details>
 
-The schema is defined in `src/convex/schema.ts`.
+<details>
+<summary><strong>Privacy posture</strong></summary>
 
-Do not include the `_id` and `_creationTime` fields in your queries (it is included by default for each table).
-Do not index `_creationTime` as it is indexed for you. Never have duplicate indexes.
+- No analytics or third-party tracking pixels.
+- No server-side history of user actions.
+- Image blobs are stored in your browser's `IndexedDB`. Each record can be
+  deleted individually from the **Records** drawer.
+- The Convex `storeImage` action is the *only* network write — strictly used
+  to give URL-mode engines a publicly reachable image URL. New uploads each
+  dispatch cycle; old URLs become orphaned and are not referenced from the
+  UI.
 
+See [`docs/privacy.md`](./docs/privacy.md) for the long form.
 
-## Convex Actions: Using CRUD operations
+</details>
 
-When running anything that involves external connections, you must use a convex action with "use node" at the top of the file.
+---
 
-You cannot have queries or mutations in the same file as a "use node" action file. Thus, you must use pre-built queries and mutations in other files.
+## Service registry & dispatcher
 
-You can also use the pre-installed internal crud functions for the database:
+Engines declare a **Tier**, **Region**, **Feature**, and a **Mode**
+(`form-upload` or `url-open`). The Inquisitor:
 
-```ts
-// in convex/users.ts
-import { crud } from "convex-helpers/server/crud";
-import schema from "./schema.ts";
+1. Reads the active plate's EXIF; if GPS is present, it derives a Region and
+   pre-ticks the matching engines (the **regional hint banner**).
+2. Uploads the plate through Convex `storeImage` only if the chosen set
+   includes any `url-open` engine.
+3. Dispatches every selected engine either by submitting a hidden multipart
+   form (for `form-upload`) or by `window.open(engine.urlBuilder(hostedUrl))`.
 
-export const { create, read, update, destroy } = crud(schema, "users");
+See [`docs/adding-services.md`](./docs/adding-services.md) for the registry
+schema and how to add a new service.
 
-// in some file, in an action:
-const user = await ctx.runQuery(internal.users.read, { id: userId });
+---
 
-await ctx.runMutation(internal.users.update, {
-  id: userId,
-  patch: {
-    status: "inactive",
-  },
-});
+## Architecture
+
+```mermaid
+flowchart TB
+  UI[Inquisitor page] --> IH[InputHub]
+  UI --> PV[Preview + palette tint]
+  UI --> EN[Engines browser]
+  UI --> SB[Sidebar]
+  UI --> HI[History drawer]
+  IH --> ST[useInquiryStore]
+  PV --> ST
+  EN --> ST
+  EN -->|hosted URL| CX[Convex storeImage]
+  SB --> ST
+  HI --> IDB[(IndexedDB)]
+  HI --> LS[(localStorage)]
+  ST --> EH[EXIF + palette + hash]
+  ST --> IDB
 ```
 
+Read [`docs/architecture.md`](./docs/architecture.md) for the full topology.
 
-## Common Convex Mistakes To Avoid
+---
 
-When using convex, make sure:
-- Document IDs are referenced as `_id` field, not `id`.
-- Document ID types are referenced as `Id<"TableName">`, not `string`.
-- Document object types are referenced as `Doc<"TableName">`.
-- Keep schemaValidation to false in the schema file.
-- You must correctly type your code so that it passes the type checker.
-- You must handle null / undefined cases of your convex queries for both frontend and backend, or else it will throw an error that your data could be null or undefined.
-- Always use the `@/folder` path, with `@/convex/folder/file.ts` syntax for importing convex files.
-- This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
-- Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
-- NEVER have return type validators.
+## Vintage design system
+
+The Inquisitor's mood is muted sepia / aged-paper. Token names live in
+`src/index.css`; see [`docs/vintage-design-system.md`](./docs/vintage-design-system.md).
+The active plate's dominant pigment dynamically retints the brass & burgundy
+accents via CSS custom properties.
+
+---
+
+## Service status
+
+| Engine tier | Count | Mode(s) |
+|---|---:|---|
+| Tier I — Major | 11 | form-upload + url-open |
+| Tier II — Facial/AI | 6 | form-upload + url-open |
+| Tier III — E-com & Stock | 10 | form-upload + url-open |
+| Tier IV — Niche & Specialty | 14 | form-upload + url-open |
+| **Total** | **41** | |
+
+Tiers reflected in `src/lib/engines.ts`.
+
+---
+
+## Wiki
+
+- [Architecture](./docs/architecture.md)
+- [Adding new services](./docs/adding-services.md)
+- [Privacy policy](./docs/privacy.md)
+- [Vintage design system](./docs/vintage-design-system.md)
+- [API reference](./docs/api-reference.md)
+
+---
+
+## Tech stack
+
+Vite · React 19 · Tailwind v4 · shadcn/ui · Convex · Convex Auth · Framer
+Motion · IndexedDB. Detailed conventions live in the original `README`
+appendix lower in this repo (kept for the Freebuff template).

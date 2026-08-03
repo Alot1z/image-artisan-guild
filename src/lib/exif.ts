@@ -1,7 +1,14 @@
 // Lightweight EXIF metadata reader for JPEG files (no external deps).
-// Supports a curated set of commonly used tags — enough to surface provenance.
+// Supports a curated set of commonly used tags — enough to surface provenance,
+// including GPS lat/lon for geo-aware engine hints.
 
 export type ExifData = Record<string, string | number | undefined>;
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+  alt?: number;
+}
 
 const TAG_NAMES: Record<number, string> = {
   0x010f: "Make",
@@ -14,10 +21,6 @@ const TAG_NAMES: Record<number, string> = {
   0x0132: "DateTime",
   0x013b: "Artist",
   0x013e: "WhitePoint",
-  0x013f: "PrimaryChromaticities",
-  0x0211: "YCbCrCoefficients",
-  0x0213: "YCbCrPositioning",
-  0x0214: "ReferenceBlackWhite",
   0x8298: "Copyright",
   0x8769: "ExifIFDPointer",
   0x8825: "GPSIFDPointer",
@@ -54,6 +57,27 @@ const TAG_NAMES: Record<number, string> = {
   0xa433: "LensMake",
   0xa434: "LensModel",
   0xa435: "LensSerialNumber",
+  // GPS subdirectory
+  0x0000: "GPSVersionID",
+  0x0001: "GPSLatitudeRef",
+  0x0002: "GPSLatitude",
+  0x0003: "GPSLongitudeRef",
+  0x0004: "GPSLongitude",
+  0x0005: "GPSAltitudeRef",
+  0x0006: "GPSAltitude",
+  0x0007: "GPSTimeStamp",
+  0x0008: "GPSSatellites",
+  0x0009: "GPSStatus",
+  0x000a: "GPSMeasureMode",
+  0x000b: "GPSDOP",
+  0x000c: "GPSSpeedRef",
+  0x000d: "GPSSpeed",
+  0x000e: "GPSTrackRef",
+  0x000f: "GPSTrack",
+  0x0010: "GPSImgDirectionRef",
+  0x0011: "GPSImgDirection",
+  0x0012: "GPSMapDatum",
+  0x001d: "GPSDateStamp",
 };
 
 function readAscii(view: DataView, start: number, length: number): string {
@@ -72,12 +96,12 @@ function readRational(view: DataView, offset: number): number {
   return den === 0 ? 0 : num / den;
 }
 
-function readValue(view: DataView, type: number, _count: number, offset: number): string | number | undefined {
+function readValue(view: DataView, type: number, count: number, offset: number): string | number | undefined {
   switch (type) {
     case 1: // BYTE
       return view.getUint8(offset);
     case 2: // ASCII
-      return readAscii(view, offset, _count);
+      return readAscii(view, offset, count);
     case 3: // SHORT
       return view.getUint16(offset, false);
     case 4: // LONG
@@ -85,7 +109,7 @@ function readValue(view: DataView, type: number, _count: number, offset: number)
     case 5: // RATIONAL
       return readRational(view, offset);
     case 7: // UNDEFINED
-      return _count > 0 ? view.getUint8(offset) : undefined;
+      return count > 0 ? view.getUint8(offset) : undefined;
     case 10: // SRATIONAL
       return (view.getInt32(offset, false) || 0) / (view.getInt32(offset + 4, false) || 1);
     default:
@@ -131,7 +155,6 @@ export async function readExif(file: File | Blob): Promise<ExifData> {
   const buffer = await file.slice(0, Math.min(file.size, 256 * 1024)).arrayBuffer();
   const view = new DataView(buffer);
 
-  // JPEG magic: 0xFFD8 start, 0xFFE1 (APP1 = EXIF)
   if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) return {};
 
   let offset = 2;
@@ -140,14 +163,12 @@ export async function readExif(file: File | Blob): Promise<ExifData> {
     const marker = view.getUint16(offset, false);
     const size = view.getUint16(offset + 2, false);
     if (marker === 0xffe1) {
-      // Verify "Exif\0\0"
       if (view.getUint32(offset + 4, false) === 0x45786966) {
         const tiffStart = offset + 10;
         const little = view.getUint16(tiffStart, false) === 0x4949;
         const ifd0Offset = tiffStart + view.getUint32(tiffStart + 4, little);
         const data = parseIFD(view, ifd0Offset, tiffStart);
 
-        // Sub-IFDs
         const exifPointer = data["ExifIFDPointer"];
         if (typeof exifPointer === "number") {
           Object.assign(data, parseIFD(view, tiffStart + exifPointer, tiffStart));
@@ -164,6 +185,19 @@ export async function readExif(file: File | Blob): Promise<ExifData> {
   }
 
   return {};
+}
+
+/** Read the GPS lat/lon tuple out of EXIF (returns null if missing). */
+export function readGeoPoint(exif: ExifData): GeoPoint | null {
+  if (typeof exif.GPSLatitude !== "number" || typeof exif.GPSLongitude !== "number") return null;
+  const latRef = String(exif.GPSLatitudeRef ?? "N");
+  const lonRef = String(exif.GPSLongitudeRef ?? "E");
+  const lat = (latRef === "S" ? -1 : 1) * exif.GPSLatitude;
+  const lon = (lonRef === "W" ? -1 : 1) * exif.GPSLongitude;
+  const alt = typeof exif.GPSAltitude === "number" ? exif.GPSAltitude : undefined;
+  return Number.isFinite(lat) && Number.isFinite(lon)
+    ? { lat, lon, alt }
+    : null;
 }
 
 export function summarizeExif(exif: ExifData): string {

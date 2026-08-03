@@ -46,11 +46,14 @@ describe("Configuration provider", () => {
   test("layers explicit environment values over JSON without overwriting absent values", async () => {
     const filePath = "/tmp/ris-proxy-test-config.json";
     await Bun.write(filePath, JSON.stringify({ policies: { maxConcurrency: 4, maxRetries: 1 }, port: 4100 }));
-    const loaded = loadConfig({ jsonPath: filePath, env: { RIS_MAX_RETRIES: "0" } });
 
-    expect(loaded.port).toBe(4100);
-    expect(loaded.policies.maxConcurrency).toBe(4);
-    expect(loaded.policies.maxRetries).toBe(1);
+    const fromJson = loadConfig({ jsonPath: filePath, env: {} });
+    expect(fromJson.port).toBe(4100);
+    expect(fromJson.policies.maxConcurrency).toBe(4);
+    expect(fromJson.policies.maxRetries).toBe(1);
+
+    const fromEnv = loadConfig({ jsonPath: filePath, env: { RIS_MAX_RETRIES: "0" } });
+    expect(fromEnv.policies.maxRetries).toBe(0);
   });
 });
 

@@ -94,6 +94,11 @@ The managed Freebuff environment runs the Vite and Convex development processes.
 - `src/components/inquisitor/Engines.tsx` — service catalog and ranked results
 - `src/pages/Inquisitor.tsx` — pipeline orchestration
 - `src/lib/history.ts` — browser-only IndexedDB history
+- `proxy/` — isolated Express/TypeScript RIS External Proxy with official API adapters, honest stubs, SSRF defenses, queueing, and Docker deployment
+
+## Run the external proxy
+
+The proxy is deployed separately from the managed Vite/Convex app. See [`proxy/README.md`](proxy/README.md) for its adapter matrix and deployment commands. Set `RIS_PROXY_URL` and `RIS_PROXY_KEY` in the Freebuff Keys tab after deployment.
 
 ## Privacy
 

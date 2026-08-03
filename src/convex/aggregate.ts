@@ -76,22 +76,31 @@ function normalizeResults(payload: unknown): AggregateResult[] | null {
 
   return candidate.flatMap((item, index) => {
     if (!isRecord(item)) return [];
-    const sourceUrl = asString(item.sourceUrl) ?? asString(item.url);
+    // Accept both the proxy's public contract (`url`, `thumbnail`,
+    // `confidence`, `source_engine`) and the older internal field names so
+    // deployments can roll forward without dropping already-returned hits.
+    const sourceUrl = asString(item.sourceUrl) ?? asString(item.pageUrl) ?? asString(item.url);
     if (!sourceUrl) return [];
-    const services = Array.isArray(item.services)
-      ? item.services.filter((service): service is string => typeof service === "string")
-      : undefined;
+    const services = [
+      ...(Array.isArray(item.services)
+        ? item.services.filter((service): service is string => typeof service === "string")
+        : []),
+      ...(asString(item.source_engine) ? [asString(item.source_engine)!] : []),
+    ];
+    const metadata = isRecord(item.metadata) ? item.metadata : undefined;
+    const dimensions = metadata ? asString(metadata.dimensions) : undefined;
+    const [widthText, heightText] = dimensions?.split("x") ?? [];
     return [{
-      id: asString(item.id) ?? `proxy-result-${index + 1}`,
-      title: asString(item.title) ?? "Untitled match",
+      id: asString(item.id) ?? `${asString(item.source_engine) ?? "proxy"}-result-${index + 1}`,
+      title: asString(item.title) ?? (asString(item.source_engine) ? `${asString(item.source_engine)} match` : "Untitled match"),
       sourceUrl,
-      imageUrl: asString(item.imageUrl) ?? asString(item.image),
+      imageUrl: asString(item.imageUrl) ?? asString(item.image) ?? asString(item.url),
       thumbnailUrl: asString(item.thumbnailUrl) ?? asString(item.thumbnail),
-      width: asNumber(item.width),
-      height: asNumber(item.height),
-      score: asNumber(item.score),
+      width: asNumber(item.width) ?? asNumber(widthText),
+      height: asNumber(item.height) ?? asNumber(heightText),
+      score: asNumber(item.score) ?? asNumber(item.confidence),
       matchType: asString(item.matchType),
-      services,
+      services: services.length > 0 ? [...new Set(services)] : undefined,
     } satisfies AggregateResult];
   });
 }

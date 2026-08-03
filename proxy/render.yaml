@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ris-external-proxy
+    runtime: docker
+    dockerfilePath: ./proxy/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: RIS_PROXY_KEY
+        sync: false
+      - key: SAUCENAO_API_KEY
+        sync: false
+      - key: BING_VISUAL_SEARCH_API_KEY
+        sync: false
+      - key: PORT
+        value: "3000"

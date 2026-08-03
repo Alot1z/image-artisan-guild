@@ -16,6 +16,7 @@ import { perceptualHash, similarityPercent } from "@/lib/phash";
 import { extractPalette, type Swatch } from "@/lib/palette";
 import { readExif, type ExifData } from "@/lib/exif";
 import { blobToDataUrl } from "@/lib/image-utils";
+import { ALL_ENGINE_IDS } from "@/lib/engines";
 
 export interface InquiryAsset {
   id: string;
@@ -145,7 +146,10 @@ export function useInquiryStore(): Store {
       palette,
       exif,
       hash,
-      engines: [],
+      // Default state: every available engine is pre-ticked. The user keeps
+      // the maximum power engine out of the box, and can shed any service
+      // from the Advanced Options panel.
+      engines: [...ALL_ENGINE_IDS],
     };
     setAssets((prev) => {
       const next = [...prev, asset];
@@ -312,7 +316,7 @@ export async function hydrateAsset(entry: HistoryEntry): Promise<InquiryAsset | 
     palette,
     exif,
     hash,
-    engines: entry.engines ?? [],
+    engines: entry.engines ?? [...ALL_ENGINE_IDS],
     hostedUrl: entry.hostedUrl,
   };
 }

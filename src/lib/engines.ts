@@ -29,7 +29,7 @@ export interface Engine {
   tier: Tier;
   region: Region;
   /** Sub-category displayed inside the tier; used for chip filters. */
-  feature: "general" | "face" | "stock" | "product" | "anime" | "art" | "duplicate" | "ocr";
+  feature: "general" | "face" | "stock" | "product" | "anime" | "art" | "duplicate" | "ocr" | "forensic";
   mode: EngineMode;
   upload?: { endpoint: string; fieldName: string; extras?: Record<string, string> };
   urlBuilder?: (imageUrl: string) => string;
@@ -63,6 +63,16 @@ export const ENGINES: Engine[] = [
     mark: "B", availability: "free",
   },
   {
+    id: "duckduckgo",
+    name: "DuckDuckGo Images",
+    description: "Privacy-respecting image search; results come from Bing's index under the hood.",
+    tier: 1, region: "global", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://duckduckgo.com/?q=${encodeURIComponent(url)}&iax=images&ia=images`,
+    mark: "DDG", availability: "free",
+  },
+  {
     id: "yandex",
     name: "Yandex Images",
     description: "Russia's deepest catalogue — strongest on faces, OCR, and similar image matching.",
@@ -80,6 +90,66 @@ export const ENGINES: Engine[] = [
     mode: "form-upload",
     upload: { endpoint: "https://tineye.com/search", fieldName: "image", extras: { sort: "score", order: "desc" } },
     mark: "T", availability: "free",
+  },
+  {
+    id: "qwant",
+    name: "Qwant Images",
+    description: "European privacy-respecting image search with no tracking.",
+    tier: 1, region: "europe", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://www.qwant.com/?q=${encodeURIComponent(url)}&t=images`,
+    mark: "Q", availability: "free",
+  },
+  {
+    id: "startpage",
+    name: "Startpage Images",
+    description: "Privacy search that proxies Google results anonymously.",
+    tier: 1, region: "europe", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://www.startpage.com/sp/search?query=${encodeURIComponent(url)}&cat=images`,
+    mark: "Sp", availability: "free",
+  },
+  {
+    id: "ecosia",
+    name: "Ecosia Images",
+    description: "The plant-planting search engine — visual search powered by Bing under the hood.",
+    tier: 1, region: "europe", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://www.ecosia.org/images?view=detailv2&imgurl=${encodeURIComponent(url)}`,
+    mark: "E", availability: "free",
+  },
+  {
+    id: "yep",
+    name: "Yep.com Images",
+    description: "Brave's independent web index — creator-revenue-sharing search.",
+    tier: 1, region: "global", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://yep.com/images?q=${encodeURIComponent(url)}`,
+    mark: "Yp", availability: "free",
+  },
+  {
+    id: "brave",
+    name: "Brave Images",
+    description: "Brave's own privacy-respecting image search.",
+    tier: 1, region: "global", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://search.brave.com/images?q=${encodeURIComponent(url)}`,
+    mark: "Br", availability: "free",
+  },
+  {
+    id: "yahoo",
+    name: "Yahoo Image Search",
+    description: "Yahoo's image search — independent index, finds older content reliably.",
+    tier: 1, region: "global", feature: "general",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://images.search.yahoo.com/search/images?imgurl=${encodeURIComponent(url)}&imgsz=all`,
+    mark: "Y!", availability: "free",
   },
   {
     id: "baidu",
@@ -134,7 +204,7 @@ export const ENGINES: Engine[] = [
   {
     id: "mailru",
     name: "Mail.ru Images",
-    description: "Russian Mail.ru visual search — strong on Slavic faces and news photography.",
+    description: "Russian Mail.ru visual search — strongest on Slavic faces and news photography.",
     tier: 1, region: "russia", feature: "general",
     mode: "url-open",
     needsHost: true,
@@ -142,14 +212,14 @@ export const ENGINES: Engine[] = [
     mark: "M", availability: "free",
   },
   {
-    id: "ecosia",
-    name: "Ecosia Images",
-    description: "The plant-planting search engine — visual search powered by Bing under the hood.",
-    tier: 1, region: "europe", feature: "general",
+    id: "rambler",
+    name: "Rambler Images",
+    description: "Russian Rambler image search — strong on Russian-language results.",
+    tier: 1, region: "russia", feature: "general",
     mode: "url-open",
     needsHost: true,
-    urlBuilder: (url) => `https://www.ecosia.org/images?view=detailv2&imgurl=${encodeURIComponent(url)}`,
-    mark: "E", availability: "free",
+    urlBuilder: (url) => `https://nova.rambler.ru/search?query=${encodeURIComponent(url)}&utm_source=&profile=desktop`,
+    mark: "Rm", availability: "free",
   },
 
   // ─────────────── TIER 2 · FACIAL / AI RECOGNITION ───────────────
@@ -208,6 +278,15 @@ export const ENGINES: Engine[] = [
     upload: { endpoint: "https://findclone.ru/upload", fieldName: "photo" },
     mark: "FC", availability: "login",
   },
+  {
+    id: "tineye-faces",
+    name: "TinEye Face Search",
+    description: "TinEye's facial similar-image index (no login required).",
+    tier: 2, region: "global", feature: "face",
+    mode: "form-upload",
+    upload: { endpoint: "https://tineye.com/search", fieldName: "image", extras: { sort: "score", order: "desc", face: "1" } },
+    mark: "TF", availability: "free",
+  },
 
   // ─────────────── TIER 3 · E-COMMERCE & STOCK ───────────────
   {
@@ -247,6 +326,36 @@ export const ENGINES: Engine[] = [
     mode: "form-upload",
     upload: { endpoint: "https://www.aliexpress.com/", fieldName: "SearchText" },
     mark: "Ali", availability: "free",
+  },
+  {
+    id: "etsy",
+    name: "Etsy Visual Search",
+    description: "Etsy handmade marketplace — craft, vintage, and designer finds.",
+    tier: 3, region: "global", feature: "product",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://www.etsy.com/search?q=${encodeURIComponent(url)}&is_image_search=1`,
+    mark: "Et", availability: "free",
+  },
+  {
+    id: "walmart",
+    name: "Walmart Visual",
+    description: "Walmart's visual product search — opens the camera page.",
+    tier: 3, region: "americas", feature: "product",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://www.walmart.com/search?query=${encodeURIComponent(url)}&type=image`,
+    mark: "Wm", availability: "free",
+  },
+  {
+    id: "target",
+    name: "Target Visual",
+    description: "Target's visual product search lane.",
+    tier: 3, region: "americas", feature: "product",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://www.target.com/s?searchTerm=${encodeURIComponent(url)}`,
+    mark: "Tg", availability: "free",
   },
   {
     id: "shutterstock",
@@ -297,6 +406,16 @@ export const ENGINES: Engine[] = [
     needsHost: true,
     urlBuilder: (url) => `https://stock.adobe.com/search?similar_image_url=${encodeURIComponent(url)}`,
     mark: "AS", availability: "freemium",
+  },
+  {
+    id: "unsplash",
+    name: "Unsplash Source",
+    description: "Unsplash's image-search — strong on photographer / stock reuse.",
+    tier: 3, region: "global", feature: "stock",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://unsplash.com/s/photos/${encodeURIComponent(url)}`,
+    mark: "Un", availability: "free",
   },
   {
     id: "giphy",
@@ -413,23 +532,33 @@ export const ENGINES: Engine[] = [
     mark: "TC", availability: "free",
   },
   {
-    id: "snapdraw",
-    name: "Snapdraw",
-    description: "Traceback of stock-photo reuse — opens Snapdraw with image URL.",
-    tier: 4, region: "global", feature: "stock",
+    id: "imgops",
+    name: "ImgOps",
+    description: "OSINT meta-tool — opens TinEye, Google, Yandex, Bing, SauceNAO in one tab.",
+    tier: 4, region: "global", feature: "forensic",
     mode: "url-open",
     needsHost: true,
-    urlBuilder: (url) => `https://snapdraw.org/?url=${encodeURIComponent(url)}`,
-    mark: "SD", availability: "flaky",
+    urlBuilder: (url) => `https://imgops.com/${encodeURIComponent(url)}`,
+    mark: "IO", availability: "free",
   },
   {
-    id: "noop-cc",
-    name: "Noop.cc",
-    description: "Free, no-login TinEye mirror — useful when TinEye is rate-limited.",
-    tier: 4, region: "global", feature: "duplicate",
+    id: "fotoforensics",
+    name: "FotoForensics",
+    description: "ELA, metadata, JPEG analysis — useful for verifying image authenticity.",
+    tier: 4, region: "global", feature: "forensic",
     mode: "form-upload",
-    upload: { endpoint: "https://noop.cc/", fieldName: "image" },
-    mark: "No", availability: "flaky",
+    upload: { endpoint: "https://fotoforensics.com/", fieldName: "UploadedImage" },
+    mark: "FF", availability: "free",
+  },
+  {
+    id: "29a",
+    name: "Forensically",
+    description: "Photo-forensics suite: ELA, clone detection, ghost map, noise analysis.",
+    tier: 4, region: "global", feature: "forensic",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://29a.ch/photo-forensics/#${encodeURIComponent(url)}`,
+    mark: "29a", availability: "free",
   },
   {
     id: "searchengine-report",
@@ -440,6 +569,16 @@ export const ENGINES: Engine[] = [
     needsHost: true,
     urlBuilder: (url) => `https://www.searchengine.report/reverse-image-search?q=${encodeURIComponent(url)}`,
     mark: "SR", availability: "free",
+  },
+  {
+    id: "openverse",
+    name: "Openverse",
+    description: "Searches openly-licensed images from across the commons.",
+    tier: 4, region: "global", feature: "art",
+    mode: "url-open",
+    needsHost: true,
+    urlBuilder: (url) => `https://openverse.org/search?image=${encodeURIComponent(url)}`,
+    mark: "OV", availability: "free",
   },
 ];
 
@@ -454,7 +593,7 @@ export const TIER_DESCRIPTIONS: Record<Tier, string> = {
   1: "First-stop web-scale indexes. These engines see the most of the open internet.",
   2: "Engines specialized in identifying people, faces, and AI-generated likenesses.",
   3: "Shopping and stock platforms — useful for finding where a product or stock photo has been reused.",
-  4: "Anime traceback, duplicate-finders, NSFW-aware mirrors, deep-web specifics.",
+  4: "Anime traceback, duplicate-finders, image forensics, and meta-aggregators.",
 };
 
 export const REGION_TITLES: Record<Region, string> = {
@@ -464,6 +603,25 @@ export const REGION_TITLES: Record<Region, string> = {
   europe: "Europe",
   americas: "North & South America",
   mena: "Middle East & North Africa",
+};
+
+export const AVAILABILITY_TITLES: Record<Engine["availability"], string> = {
+  free: "Free, no login",
+  freemium: "Freemium (paid tiers)",
+  login: "Login required",
+  flaky: "Flaky or experimental",
+};
+
+export const FEATURE_TITLES: Record<Engine["feature"], string> = {
+  general: "General",
+  face: "Faces & People",
+  stock: "Stock & Editorial",
+  product: "Product & Shopping",
+  anime: "Anime & Illustration",
+  art: "Art & Commons",
+  duplicate: "Duplicate-Finder",
+  ocr: "OCR & Text",
+  forensic: "Forensic Analysis",
 };
 
 export function engineById(id: string): Engine | undefined {
@@ -477,6 +635,9 @@ export function enginesByTier(tier: Tier): Engine[] {
 export function enginesByRegion(region: Region): Engine[] {
   return ENGINES.filter((e) => e.region === region || e.region === "global");
 }
+
+/** The grand union of every engine id — the user starts here by default. */
+export const ALL_ENGINE_IDS: readonly string[] = ENGINES.map((e) => e.id);
 
 /** Build a temporary hidden form that uploads an image blob to a search
  *  engine and navigates the current tab to the result page. */

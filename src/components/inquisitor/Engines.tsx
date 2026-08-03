@@ -93,14 +93,39 @@ export function Engines({
     onEnginesChange(active.id, Array.from(next));
   };
 
+  // One-click mass selection: every engine that matches the active filter
+  // (&/or search query). This is the "Enable every index" affordance.
+  const engageAll = () => {
+    if (!active) return;
+    const visibleIds = filtered.map((e) => e.id);
+    const next = new Set(chosen);
+    visibleIds.forEach((id) => next.add(id));
+    onEnginesChange(active.id, Array.from(next));
+  };
+  const disengageAll = () => {
+    if (!active) return;
+    const visibleIds = filtered.map((e) => e.id);
+    const next = new Set(chosen);
+    visibleIds.forEach((id) => next.delete(id));
+    onEnginesChange(active.id, Array.from(next));
+  };
+
   return (
     <div className="archive-card relative overflow-hidden rounded-lg">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-3">
         <div>
           <p className="eyebrow">The Catalogue of Engines</p>
           <p className="font-display text-lg italic">Pick the indices that should receive your plate.</p>
         </div>
-        <span className="ribbon-num">{chosen.size}/{ENGINES.length}</span>
+        <div className="flex items-center gap-2">
+          <span className="ribbon-num">{chosen.size}/{ENGINES.length}</span>
+          <Button size="sm" variant="outline" disabled={!active} onClick={engageAll} className="h-7 gap-1 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] px-3 font-display italic text-[0.7rem]">
+            Engage every index
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!active} onClick={disengageAll} className="h-7 gap-1 rounded-full px-3 font-display italic text-[0.7rem] text-[color-mix(in_oklab,var(--ink)_70%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]">
+            Clear
+          </Button>
+        </div>
       </div>
 
       {/* Regional / GPS hint banner */}

@@ -15,6 +15,14 @@ export const config = {
   sauceNaoApiKey: proxyConfig.secrets.sauceNaoApiKey,
   bingApiKey: proxyConfig.secrets.bingApiKey,
   bingEndpoint: proxyConfig.bingEndpoint,
+  lensUploadUrl: proxyConfig.lensUploadUrl,
+  lensResultsTimeoutMs: proxyConfig.lensResultsTimeoutMs,
+  browserHeadless: proxyConfig.browserHeadless,
+  browserViewportWidth: proxyConfig.browserViewportWidth,
+  browserViewportHeight: proxyConfig.browserViewportHeight,
+  browserUserAgent: proxyConfig.browserUserAgent,
+  browserLocale: proxyConfig.browserLocale,
+  browserTimezone: proxyConfig.browserTimezone,
 };
 
 export { DEFAULT_CONFIG, loadConfig } from "./core/config.js";

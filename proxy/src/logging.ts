@@ -25,6 +25,7 @@ export function safeAdapterError(error: unknown): string {
   }
   if (error instanceof Error && error.name === "AbortError") return "Timeout exceeded";
   if (error instanceof Error && error.name === "AdapterNotImplementedError") return error.message;
+  if (error instanceof Error && error.name === "BrowserBlockedError") return "Upstream blocked the automated request";
   return "Adapter execution failed";
 }
 

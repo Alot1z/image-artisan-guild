@@ -47,15 +47,3 @@ export const tinEyeStub = new UnavailableAdapter(
   },
   "TinEye adapter unavailable: configure a permitted account-specific API integration",
 );
-
-export const googleLensStub = new UnavailableAdapter(
-  "google-lens",
-  "Google Lens",
-  {
-    supportsImageUpload: false,
-    supportsUrlInput: false,
-    requiresAuth: false,
-    integrationType: "experimental",
-  },
-  "Google Lens adapter is experimental and not enabled in this proxy",
-);

@@ -4,7 +4,8 @@ import { log } from "../logging.js";
 import type { AdapterError, IImageSearchAdapter, NormalizedResult } from "../types.js";
 import { BingVisualAdapter } from "./bing.js";
 import { SauceNaoApiAdapter } from "./api/sauceNaoAdapter.js";
-import { googleLensStub, tinEyeStub, unavailableAdapter } from "./stubs.js";
+import { GoogleLensAdapter } from "./browser/googleLensAdapter.js";
+import { tinEyeStub, unavailableAdapter } from "./stubs.js";
 import { proxyConfig } from "../core/config.js";
 import { AdapterRegistry } from "../core/registry.js";
 import { RoutingEngine } from "../core/router.js";
@@ -15,7 +16,7 @@ registry
   .register(new BingVisualAdapter())
   .register(new SauceNaoApiAdapter())
   .register(tinEyeStub)
-  .register(googleLensStub);
+  .register(new GoogleLensAdapter());
 
 const scheduler = new ExecutionScheduler(proxyConfig.policies);
 const router = new RoutingEngine(registry, scheduler);
@@ -66,4 +67,9 @@ export function cacheKeyFor(imageUrl: string, engineIds: string[]): string {
 
 export function providerRegistry(): AdapterRegistry {
   return registry;
+}
+
+/** Run every registered adapter's cleanup hook (e.g. close Playwright browsers). */
+export async function shutdownAdapters(): Promise<void> {
+  await Promise.allSettled(registry.list().map((adapter) => adapter.cleanup()));
 }

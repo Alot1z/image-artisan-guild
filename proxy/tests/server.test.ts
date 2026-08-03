@@ -38,13 +38,25 @@ describe("RIS proxy HTTP contract", () => {
     const response = await fetch(`${baseUrl}/api/aggregate-search`, {
       method: "POST",
       headers: { authorization: "Bearer test-secret", "content-type": "application/json" },
-      body: JSON.stringify({ imageUrl: "https://example.com/image.jpg", engineIds: ["google-lens"] }),
+      body: JSON.stringify({ imageUrl: "https://example.com/image.jpg", engineIds: ["tineye"] }),
     });
     expect(response.status).toBe(200);
     const json = await response.json() as { status: string; total_results: number; errors: Array<{ engine_id: string }> };
     expect(json.status).toBe("success");
     expect(json.total_results).toBe(0);
-    expect(json.errors[0]?.engine_id).toBe("google-lens");
+    expect(json.errors[0]?.engine_id).toBe("tineye");
+  });
+
+  test("advertises Google Lens as a registered URL-capable adapter", async () => {
+    const response = await fetch(`${baseUrl}/api/adapters`);
+    expect(response.status).toBe(200);
+    const json = await response.json() as {
+      adapters: Array<{ id: string; capabilities: { supportsUrlInput: boolean; integrationType: string } }>;
+    };
+    const lens = json.adapters.find((adapter) => adapter.id === "google-lens");
+    expect(lens).toBeDefined();
+    expect(lens?.capabilities.supportsUrlInput).toBe(true);
+    expect(lens?.capabilities.integrationType).toBe("playwright");
   });
 
   test("exposes health without credentials", async () => {

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  proxy:
+    name: Proxy · build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: proxy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        env:
+          # Unit/integration tests mock the browser; skip the Chromium download.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: bun install --frozen-lockfile
+
+      - name: Compile TypeScript
+        run: bun run build
+
+      - name: Run unit & integration tests
+        run: bun run test
+
+  docker:
+    name: Docker · image build & smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t ris-external-proxy:ci ./proxy
+
+      - name: Smoke test /health and /api/aggregate-search
+        env:
+          RIS_PROXY_KEY: ci-smoke-secret
+        run: |
+          set -euo pipefail
+          docker run -d --name ris-ci -p 3000:3000 \
+            -e RIS_PROXY_KEY="$RIS_PROXY_KEY" \
+            ris-external-proxy:ci
+          trap 'docker rm -f ris-ci >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+
+          echo "--- /health ---"
+          curl -fsS http://127.0.0.1:3000/health
+          echo
+
+          echo "--- aggregate-search (tineye must fail honestly) ---"
+          RESPONSE=$(curl -fsS -X POST http://127.0.0.1:3000/api/aggregate-search \
+            -H "Authorization: Bearer $RIS_PROXY_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"imageUrl":"https://example.com/photo.jpg","engineIds":["tineye"]}')
+          echo "$RESPONSE"
+          echo "$RESPONSE" | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d));
+            process.stdin.on("end", () => {
+              const r = JSON.parse(s);
+              if (r.status !== "success" || r.total_results !== 0 || r.errors?.[0]?.engine_id !== "tineye") {
+                console.error("unexpected aggregate-search response:", s);
+                process.exit(1);
+              }
+            });
+          '

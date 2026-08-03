@@ -2,8 +2,10 @@ services:
   - type: web
     name: ris-external-proxy
     runtime: docker
-    dockerfilePath: ./proxy/Dockerfile
-    dockerContext: .
+    # The Dockerfile copies package.json / tsconfig.json / src relative to the
+    # proxy directory, so the build context must be ./proxy.
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./proxy
     healthCheckPath: /health
     envVars:
       - key: RIS_PROXY_KEY

@@ -2,7 +2,10 @@ app = "replace-with-your-ris-proxy-app"
 primary_region = "iad"
 
 [build]
-  dockerfile = "proxy/Dockerfile"
+  dockerfile = "Dockerfile"
+  # Build context is this directory (proxy/) — the Dockerfile copies
+  # package.json / tsconfig.json / src relative to it.
+  context = "."
 
 [http_service]
   internal_port = 3000

@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { log } from "../logging.js";
 import type { AdapterError, IImageSearchAdapter, NormalizedResult } from "../types.js";
 import { BingVisualAdapter } from "./bing.js";
-import { SauceNaoAdapter } from "./saucenao.js";
+import { SauceNaoApiAdapter } from "./api/sauceNaoAdapter.js";
 import { googleLensStub, tinEyeStub, unavailableAdapter } from "./stubs.js";
 import { proxyConfig } from "../core/config.js";
 import { AdapterRegistry } from "../core/registry.js";
@@ -13,7 +13,7 @@ import { ExecutionScheduler } from "../core/scheduler.js";
 const registry = new AdapterRegistry();
 registry
   .register(new BingVisualAdapter())
-  .register(new SauceNaoAdapter())
+  .register(new SauceNaoApiAdapter())
   .register(tinEyeStub)
   .register(googleLensStub);
 

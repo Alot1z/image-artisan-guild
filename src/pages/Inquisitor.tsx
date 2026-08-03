@@ -24,19 +24,36 @@ import {
   SOURCE_LABELS,
 } from "@/lib/inquiry-store";
 import { ENGINES } from "@/lib/engines";
-import { dispatchWithStagger } from "@/components/inquisitor/Engines";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { HistoryEntry } from "@/lib/history";
 import { blobToDataUrl } from "@/lib/image-utils";
 import { readGeoPoint } from "@/lib/exif";
 import { suggestedEngineIds, commonNameForGeo } from "@/lib/region";
+
+interface AggregateMatch {
+  id: string;
+  title: string;
+  sourceUrl: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
+  score?: number;
+  matchType?: string;
+  services?: string[];
+}
 import logo from "@/assets/logo.svg";
 
 export default function Inquisitor() {
   const store = useInquiryStore();
   const [params] = useSearchParams();
   const uploader = useUploader();
+  const aggregateSearch = useAction(api.aggregate.aggregateSearch);
   const [prompt, setPrompt] = useState("");
   const [uploadingLocal, setUploadingLocal] = useState<Record<string, boolean>>({});
+  const [aggregateResults, setAggregateResults] = useState<AggregateMatch[]>([]);
+  const [aggregateBusy, setAggregateBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<InquiryAsset | null>(null);
@@ -172,40 +189,61 @@ export default function Inquisitor() {
   }, [store, uploader]);
 
   const ensureHostThenDispatch = useCallback(async (asset: InquiryAsset, ids: string[]) => {
-    const needsHost = ids.some((id) => ENGINES.find((e) => e.id === id)?.mode === "url-open");
+    setAggregateBusy(true);
+    setAggregateResults([]);
     let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
-    if (needsHost && !hosted) {
+    if (!hosted) {
       try {
         const dataUrl = await blobToDataUrl(asset.blob);
-        const url = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
-        store.setHostedUrl(asset.id, url);
-        hosted = url;
-        toast({ title: "Plate hosted", description: "URL engines will open this artifact." });
+        hosted = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
+        store.setHostedUrl(asset.id, hosted);
       } catch {
         toast({
-          title: "Could not host for URL engines",
-          description: "Try the dispatch once more, or use the form-upload engines.",
+          title: "Could not host the plate",
+          description: "The external proxy needs a publicly reachable image URL before it can search.",
           variant: "destructive",
         });
+        setAggregateBusy(false);
+        return;
       }
     }
-    // Staggered dispatch — modern browsers block bursts of pop-ups; spacing
-    // them keeps the "open in a new tab" semantics intact.
-    const { opened, skipped } = dispatchWithStagger(
-      { blob: asset.blob, hostedUrl: hosted, id: asset.id, fileName: asset.fileName },
-      ids,
-      80,
-    );
-    if (opened > 0) {
-      toast({
-        title: `Dispatched to ${opened} engine${opened === 1 ? "" : "s"}`,
-        description: skipped > 0
-          ? `${skipped} skipped (needs hosting or invalid id).`
-          : "Open the new tabs to inspect each result.",
-      });
+
+    const response = await aggregateSearch({ imageUrl: hosted, engineIds: ids });
+    if (!response.ok) {
+      const description = response.error === "missing-config"
+        ? "Add RIS_PROXY_URL and RIS_PROXY_KEY in the Keys tab to enable the external search proxy."
+        : response.error === "rate-limited"
+          ? "The proxy is rate-limiting this inquiry. Wait a moment and retry."
+          : "The proxy could not return a valid result set. Check its deployment and contract.";
+      toast({ title: "Aggregate search unavailable", description, variant: "destructive" });
+      setAggregateBusy(false);
+      return;
     }
+
+    setAggregateResults(response.results as AggregateMatch[]);
     await store.recordAll({ prompt });
-  }, [store, uploader, prompt]);
+    setAggregateBusy(false);
+    toast({
+      title: `Proxy search completed across ${response.serviceCount} services`,
+      description: response.results.length > 0
+        ? `${response.results.length} ranked matches returned to the workbench.`
+        : "No matching folios were returned for this plate.",
+    });
+  }, [aggregateSearch, store, uploader, prompt]);
+
+  const handleCropped = useCallback((assetId: string, croppedBlob: Blob) => {
+    const source = store.assets.find((item) => item.id === assetId);
+    if (!source) return;
+    store.replaceAsset(assetId, {
+      blob: croppedBlob,
+      size: croppedBlob.size,
+      url: URL.createObjectURL(croppedBlob),
+      hostedUrl: undefined,
+    });
+    setCropTarget(null);
+    toast({ title: "Plate trimmed", description: "The crop was applied; the proxy search is starting again." });
+    void ensureHostThenDispatch({ ...source, blob: croppedBlob, size: croppedBlob.size, hostedUrl: undefined }, source.engines);
+  }, [ensureHostThenDispatch, store]);
 
   const activeGeoForEngines = geoPoint;
   const activeRegionLabel = regionLabel ?? undefined;
@@ -332,14 +370,16 @@ export default function Inquisitor() {
                 onDispatchAll={() => {
                   for (const a of store.assets) {
                     if (a.engines.length === 0) continue;
-                    ensureHostThenDispatch(a, a.engines);
+                    void ensureHostThenDispatch(a, a.engines);
                   }
                 }}
-                onDispatchSelected={(ids) => { if (active) ensureHostThenDispatch(active, ids); }}
+                onDispatchSelected={(ids) => { if (active) void ensureHostThenDispatch(active, ids); }}
                 prompt={prompt}
                 onPromptChange={setPrompt}
                 notes={active?.notes ?? ""}
                 onNotesChange={(v) => active && store.setNotes(active.id, v)}
+                aggregateResults={aggregateResults}
+                aggregateBusy={aggregateBusy}
                 geoHint={activeGeoForEngines}
                 regionLabel={activeRegionLabel}
               />
@@ -365,11 +405,7 @@ export default function Inquisitor() {
           asset={cropTarget}
           open={cropTarget !== null}
           onClose={() => setCropTarget(null)}
-          onCropped={(assetId, croppedBlob) => {
-            store.replaceAsset(assetId, { blob: croppedBlob, size: croppedBlob.size });
-            setCropTarget(null);
-            toast({ title: "Plate trimmed", description: "The crop has been applied to your inquiry." });
-          }}
+          onCropped={handleCropped}
         />
       )}
 

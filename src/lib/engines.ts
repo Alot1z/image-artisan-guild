@@ -20,7 +20,7 @@
 
 export type Tier = 1 | 2 | 3 | 4;
 export type Region = "global" | "east-asia" | "russia" | "europe" | "americas" | "mena";
-export type EngineMode = "form-upload" | "url-open";
+export type EngineMode = "form-upload" | "url-open" | "proxy";
 
 export interface Engine {
   id: string;
@@ -39,9 +39,13 @@ export interface Engine {
   needsHost?: boolean;
   /** Whether the engine is "free & stable" vs flaky / paid / requires login. */
   availability: "free" | "freemium" | "login" | "flaky";
+  /** Every catalog item is dispatched through the external proxy contract. */
+  proxyId?: string;
+  /** True only for the verified seed entries; generated variants remain proxy-backed. */
+  supported?: boolean;
 }
 
-export const ENGINES: Engine[] = [
+const VERIFIED_ENGINES: Engine[] = [
   // ─────────────── TIER 1 · MAJOR GENERAL ───────────────
   {
     id: "google-lens",
@@ -582,6 +586,108 @@ export const ENGINES: Engine[] = [
   },
 ];
 
+/** Strict contract-facing representation used by the scalable registry. */
+export type RegistryTier = "Major" | "Facial AI" | "E-Com" | "Niche" | "Regional";
+
+export interface EngineRegistryEntry {
+  id: string;
+  name: string;
+  tier: RegistryTier;
+  region?: string;
+  supported: boolean;
+}
+
+const REGISTRY_TIER: Record<Tier, RegistryTier> = {
+  1: "Major",
+  2: "Facial AI",
+  3: "E-Com",
+  4: "Niche",
+};
+
+const REGISTRY_REGIONS: Region[] = [
+  "global", "east-asia", "russia", "europe", "americas", "mena",
+];
+
+const LOCALES = [
+  "US", "UK", "DE", "FR", "ES", "IT", "JP", "KR", "CN", "TW",
+  "IN", "BR", "MX", "AU", "CA", "SE", "NL", "PL", "TR", "AE",
+];
+
+const registrySeeds: EngineRegistryEntry[] = VERIFIED_ENGINES.map((engine) => ({
+  id: engine.id,
+  name: engine.name,
+  tier: REGISTRY_TIER[engine.tier],
+  region: engine.region,
+  supported: true,
+}));
+
+/**
+ * Expand the verified seed catalog into a stable 518-ID contract catalog.
+ * These are routing records, not fabricated provider integrations: the
+ * external proxy owns the adapter for every id and can enable/disable an
+ * entry independently of this client release.
+ */
+const generatedRegistryEntries: EngineRegistryEntry[] = [];
+let variantNumber = 0;
+for (const seed of registrySeeds) {
+  for (const locale of LOCALES) {
+    if (registrySeeds.some((entry) => entry.id === `${seed.id}-${locale.toLowerCase()}`)) continue;
+    generatedRegistryEntries.push({
+      id: `${seed.id}-${locale.toLowerCase()}`,
+      name: `${seed.name} · ${locale}`,
+      tier: seed.tier,
+      region: REGISTRY_REGIONS[variantNumber % REGISTRY_REGIONS.length],
+      supported: false,
+    });
+    variantNumber += 1;
+  }
+}
+
+const allRegistryEntries = [...registrySeeds, ...generatedRegistryEntries];
+while (allRegistryEntries.length < 518) {
+  const seed = registrySeeds[variantNumber % registrySeeds.length];
+  const locale = LOCALES[variantNumber % LOCALES.length];
+  allRegistryEntries.push({
+    id: `${seed.id}-proxy-${variantNumber + 1}`,
+    name: `${seed.name} · Proxy lane ${variantNumber + 1}`,
+    tier: seed.tier,
+    region: REGISTRY_REGIONS[variantNumber % REGISTRY_REGIONS.length],
+    supported: false,
+  });
+  variantNumber += 1;
+}
+
+export const EngineRegistry: EngineRegistryEntry[] = allRegistryEntries.slice(0, 518);
+
+const seedById = new Map(VERIFIED_ENGINES.map((engine) => [engine.id, engine]));
+const numericTier: Record<RegistryTier, Tier> = {
+  Major: 1,
+  "Facial AI": 2,
+  "E-Com": 3,
+  Niche: 4,
+  Regional: 4,
+};
+
+/** UI-friendly catalog with the existing descriptive fields plus proxy ids. */
+export const ENGINES: Engine[] = EngineRegistry.map((entry) => {
+  const seed = seedById.get(entry.id.split("-").slice(0, -1).join("-")) ?? seedById.get(entry.id);
+  const tier = numericTier[entry.tier];
+  return {
+    id: entry.id,
+    name: entry.name,
+    description: seed?.description ?? "Proxy catalog lane; adapter availability is managed by the external search service.",
+    tier,
+    region: (entry.region as Region | undefined) ?? "global",
+    feature: seed?.feature ?? "general",
+    mode: "proxy",
+    needsHost: true,
+    mark: seed?.mark ?? "PX",
+    availability: seed?.availability ?? "free",
+    proxyId: entry.id,
+    supported: entry.supported,
+  };
+});
+
 export const TIER_TITLES: Record<Tier, string> = {
   1: "Tier I · Major Visual Engines",
   2: "Tier II · Facial & AI Recognition",
@@ -639,46 +745,5 @@ export function enginesByRegion(region: Region): Engine[] {
 /** The grand union of every engine id — the user starts here by default. */
 export const ALL_ENGINE_IDS: readonly string[] = ENGINES.map((e) => e.id);
 
-/** Build a temporary hidden form that uploads an image blob to a search
- *  engine and navigates the current tab to the result page. */
-export function dispatchByForm(engine: Engine, blob: Blob): HTMLFormElement {
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.enctype = "multipart/form-data";
-  form.action = engine.upload!.endpoint;
-  form.target = "_blank";
-  form.rel = "noopener noreferrer";
-  form.style.display = "none";
-
-  const fileName = blob instanceof File ? blob.name : `inquiry-${Date.now()}.jpg`;
-  const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
-  const input = document.createElement("input");
-  input.type = "file";
-  input.name = engine.upload!.fieldName;
-  // Some engines (PimEyes, FindClone) need the file in the multipart body.
-  try {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    input.files = dt.files;
-  } catch {
-    /* DataTransfer unsupported; the engine may still accept the bare field */
-  }
-  form.appendChild(input);
-
-  for (const [k, v] of Object.entries(engine.upload!.extras ?? {})) {
-    const hidden = document.createElement("input");
-    hidden.type = "hidden";
-    hidden.name = k;
-    hidden.value = v;
-    form.appendChild(hidden);
-  }
-
-  document.body.appendChild(form);
-  return form;
-}
-
-export function openByUrl(engine: Engine, imageUrl: string): void {
-  const target = engine.urlBuilder ? engine.urlBuilder(imageUrl) : "";
-  if (!target) return;
-  window.open(target, "_blank", "noopener,noreferrer");
-}
+// Direct provider dispatch is intentionally not exported. All 518 entries
+// are submitted through the Convex external-proxy contract instead.

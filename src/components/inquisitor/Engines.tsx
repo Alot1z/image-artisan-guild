@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 import {
   ENGINES, TIER_TITLES, TIER_DESCRIPTIONS,
   REGION_TITLES, AVAILABILITY_TITLES, FEATURE_TITLES,
-  dispatchByForm, openByUrl,
   type Engine, type Tier, type Region,
 } from "@/lib/engines";
 import type { GeoPoint } from "@/lib/exif";
@@ -37,17 +36,33 @@ interface Props {
   onPromptChange: (value: string) => void;
   notes: string;
   onNotesChange: (value: string) => void;
+  aggregateResults: AggregateMatch[];
+  aggregateBusy: boolean;
   geoHint?: GeoPoint | null;
   regionLabel?: string;
 }
 
 const FEATURE_LABEL = FEATURE_TITLES;
 
+type AggregateMatch = {
+  id: string;
+  title: string;
+  sourceUrl: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
+  score?: number;
+  matchType?: string;
+  services?: string[];
+};
+
 export function Engines({
   assets, activeId, hostedUrls, uploading,
   onEnginesChange, onHostedUrlReceived, onUploadRequest,
   onDispatchAll, onDispatchSelected,
   prompt, onPromptChange, notes, onNotesChange,
+  aggregateResults, aggregateBusy,
   geoHint, regionLabel,
 }: Props) {
   const [filter, setFilter] = useState<"all" | "form" | "url">("all");
@@ -396,9 +411,9 @@ export function Engines({
                                     {engine.availability === "freemium" ? "Freemium" : engine.availability === "login" ? "Login" : "Flaky"}
                                   </span>
                                 )}
-                                {engine.needsHost && (
-                                  <span className="text-[0.55rem] italic text-[color-mix(in_oklab,var(--ink)_55%,transparent)]" title="Needs a publicly reachable URL — the Inquisitor will host the plate first">
-                                    ◐ host
+                                                {engine.needsHost && (
+                                  <span className="text-[0.55rem] italic text-[color-mix(in_oklab,var(--ink)_55%,transparent)]" title="The external proxy receives the hosted plate URL">
+                                    ◐ proxy
                                   </span>
                                 )}
                               </div>
@@ -426,6 +441,53 @@ export function Engines({
         )}
       </div>
 
+      {/* Ranked proxy results */}
+      {active && (aggregateBusy || aggregateResults.length > 0) && (
+        <div className="border-t border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow">The Proxy Ledger</p>
+              <p className="font-display text-lg italic">Ranked matches from the external search contract.</p>
+            </div>
+            {aggregateBusy && <Loader2 className="h-4 w-4 animate-spin text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />}
+          </div>
+          {!aggregateBusy && aggregateResults.length === 0 && (
+            <p className="mt-3 font-body-serif text-sm italic text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">No matching folios were returned.</p>
+          )}
+          {aggregateResults.length > 0 && (
+            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+              {aggregateResults.map((match) => (
+                <a
+                  key={match.id}
+                  href={match.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="plate-hover group flex gap-3 rounded-md border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_60%,transparent)] p-2.5 transition"
+                >
+                  {match.thumbnailUrl ? (
+                    <img src={match.thumbnailUrl} alt="" className="h-14 w-14 shrink-0 rounded-sm object-cover" loading="lazy" />
+                  ) : (
+                    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_oklab,var(--brass)_30%,transparent)] font-display text-xs">№</span>
+                  )}
+                  <span className="min-w-0 leading-tight">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-display text-sm font-semibold group-hover:underline">{match.title}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
+                    </span>
+                    <span className="mt-1 block truncate font-mono text-[0.62rem] text-[color-mix(in_oklab,var(--ink)_60%,transparent)]">{match.sourceUrl}</span>
+                    <span className="mt-1 flex flex-wrap gap-1.5 text-[0.62rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_65%,transparent)]">
+                      {typeof match.score === "number" && <span className="catalogue-tag">score {Math.round(match.score * 100)}%</span>}
+                      {match.matchType && <span className="catalogue-tag">{match.matchType}</span>}
+                      {match.services && <span className="catalogue-tag">{match.services.length} services</span>}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Hosted URL upload + dispatch row */}
       {active && (
         <div className="border-t border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-4">
@@ -433,7 +495,7 @@ export function Engines({
             <div>
               <p className="eyebrow">Dispatch</p>
               <p className="font-body-serif text-sm text-[color-mix(in_oklab,var(--ink)_80%,transparent)]">
-                Engines marked <span className="italic">◐ host</span> need the plate to be uploaded first; the Inquisitor will do that for you.
+                The external proxy receives the plate through a short-lived hosted URL and returns one ranked result set.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -522,41 +584,6 @@ export function useUploader() {
     const result = await storeImage({ base64, mimeType, fileName });
     return result.url as string;
   };
-}
-
-/** Open a list of engines with a staggered delay between windows. Helps
- *  most browsers when dispatching a dozen or more at once. */
-export function dispatchWithStagger(
-  asset: { blob: Blob; hostedUrl?: string | null; id: string; fileName?: string },
-  engineIds: string[],
-  delayMs = 80,
-): { opened: number; skipped: number } {
-  let opened = 0;
-  let skipped = 0;
-  engineIds.forEach((id, idx) => {
-    const engine = ENGINES.find((e) => e.id === id);
-    if (!engine) { skipped++; return; }
-    setTimeout(() => {
-      if (engine.mode === "form-upload") {
-        try {
-          const form = dispatchByForm(engine, asset.blob);
-          form.submit();
-          setTimeout(() => form.remove(), 30_000);
-          opened++;
-        } catch { skipped++; }
-      } else if (engine.mode === "url-open") {
-        if (asset.hostedUrl) {
-          openByUrl(engine, asset.hostedUrl);
-          opened++;
-        } else {
-          skipped++;
-        }
-      } else {
-        skipped++;
-      }
-    }, idx * delayMs);
-  });
-  return { opened, skipped };
 }
 
 // Re-export the helper used in Inquisitor.tsx to derive coord->region labels.

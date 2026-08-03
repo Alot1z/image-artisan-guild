@@ -7,12 +7,15 @@ import { useMemo, useState } from "react";
 import {
   ChevronDown, ChevronRight, Globe, MapPin, Search, Send, Sparkles,
   Loader2, ExternalLink, UploadCloud, ToggleLeft, ToggleRight,
+  SlidersHorizontal, Settings2, CheckSquare, Square, RotateCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   ENGINES, TIER_TITLES, TIER_DESCRIPTIONS,
+  REGION_TITLES, AVAILABILITY_TITLES, FEATURE_TITLES,
+  dispatchByForm, openByUrl,
   type Engine, type Tier, type Region,
 } from "@/lib/engines";
 import type { GeoPoint } from "@/lib/exif";
@@ -38,16 +41,7 @@ interface Props {
   regionLabel?: string;
 }
 
-const FEATURE_LABEL: Record<Engine["feature"], string> = {
-  general: "General",
-  face: "Face",
-  stock: "Stock",
-  product: "Product",
-  anime: "Anime",
-  art: "Art",
-  duplicate: "Duplicate",
-  ocr: "OCR",
-};
+const FEATURE_LABEL = FEATURE_TITLES;
 
 export function Engines({
   assets, activeId, hostedUrls, uploading,
@@ -59,6 +53,18 @@ export function Engines({
   const [filter, setFilter] = useState<"all" | "form" | "url">("all");
   const [q, setQ] = useState("");
   const [tierOpen, setTierOpen] = useState<Record<Tier, boolean>>({ 1: true, 2: true, 3: false, 4: false });
+  // Advanced Options
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [regionFilter, setRegionFilter] = useState<Record<Region, boolean>>({
+    global: true, "east-asia": true, russia: true, europe: true, americas: true, mena: true,
+  });
+  const [availFilter, setAvailFilter] = useState<Record<Engine["availability"], boolean>>({
+    free: true, freemium: true, login: true, flaky: true,
+  });
+  // User-tunable dispatch settings
+  const [hostingDelayMs, setHostingDelayMs] = useState(0);
+  const [autoTickRegional, setAutoTickRegional] = useState(true);
+  const [skipLoginOnly, setSkipLoginOnly] = useState(false);
 
   const active = assets.find((a) => a.id === activeId) ?? null;
   const chosen = useMemo(() => new Set(active?.engines ?? []), [active]);
@@ -68,11 +74,14 @@ export function Engines({
       .filter((e) => {
         if (filter === "form" && e.mode !== "form-upload") return false;
         if (filter === "url" && e.mode !== "url-open") return false;
+        if (!regionFilter[e.region] && !(regionFilter.global && e.region === "global")) return false;
+        if (!availFilter[e.availability]) return false;
+        if (skipLoginOnly && e.availability === "login") return false;
         if (q && !`${e.name} ${e.description} ${FEATURE_LABEL[e.feature]}`.toLowerCase().includes(q.toLowerCase())) return false;
         return true;
       })
       .sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
-  }, [filter, q]);
+  }, [filter, q, regionFilter, availFilter, skipLoginOnly]);
 
   const grouped = useMemo(() => {
     const out: Record<Tier, Engine[]> = { 1: [], 2: [], 3: [], 4: [] };
@@ -115,9 +124,25 @@ export function Engines({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-3">
         <div>
           <p className="eyebrow">The Catalogue of Engines</p>
-          <p className="font-display text-lg italic">Pick the indices that should receive your plate.</p>
+          <p className="font-display text-lg italic">Every index starts selected. Trim the list as you wish.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant={advancedOpen ? "default" : "outline"}
+            disabled={!active}
+            onClick={() => setAdvancedOpen((v) => !v)}
+            className={cn(
+              "h-7 gap-1.5 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] px-3 font-display italic text-[0.7rem]",
+              advancedOpen
+                ? "bg-[color-mix(in_oklab,var(--seal)_55%,var(--ink)_45%)] text-[color-mix(in_oklab,var(--paper-tint)_95%,transparent)] hover:opacity-90"
+                : "bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] text-[color-mix(in_oklab,var(--ink)_75%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-tint)_85%,transparent)]",
+            )}
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+            <span>Advanced Options</span>
+            {advancedOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </Button>
           <span className="ribbon-num">{chosen.size}/{ENGINES.length}</span>
           <Button size="sm" variant="outline" disabled={!active} onClick={engageAll} className="h-7 gap-1 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] px-3 font-display italic text-[0.7rem]">
             Engage every index
@@ -173,6 +198,108 @@ export function Engines({
           />
         </div>
       </div>
+
+      {/* Advanced Options panel */}
+      <AnimatePresence initial={false}>
+        {advancedOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden border-b border-[color-mix(in_oklab,var(--ink)_22%,transparent)]"
+          >
+            <div className="space-y-3 px-4 py-4">
+              <div>
+                <p className="eyebrow flex items-center gap-1.5"><Settings2 className="h-3 w-3" /> Advanced Options</p>
+                <p className="mt-1 font-body-serif text-[0.78rem] italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
+                  Where the engines query from, what their availability looks like, and how to handle dispatch. Toggle a region off and every index from there is hidden from the catalogue.
+                </p>
+              </div>
+
+              {/* Region filter */}
+              <div>
+                <p className="eyebrow mb-1.5">Regions in view</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.entries(REGION_TITLES) as [Region, string][]).map(([k, title]) => (
+                    <button
+                      key={k}
+                      onClick={() => setRegionFilter((p) => ({ ...p, [k]: !p[k] }))}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-[0.7rem] font-display italic transition",
+                        regionFilter[k]
+                          ? "border-[color-mix(in_oklab,var(--seal)_55%,var(--ink)_45%)] bg-[color-mix(in_oklab,var(--seal)_55%,var(--ink)_45%)] text-[color-mix(in_oklab,var(--paper-tint)_95%,transparent)]"
+                          : "border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] text-[color-mix(in_oklab,var(--ink)_75%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-tint)_85%,transparent)]",
+                      )}
+                    >
+                      {regionFilter[k] ? <CheckSquare className="mr-1 inline h-3 w-3 align-text-bottom" /> : <Square className="mr-1 inline h-3 w-3 align-text-bottom" />}
+                      {title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Availability filter */}
+              <div>
+                <p className="eyebrow mb-1.5">Availability classes</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.entries(AVAILABILITY_TITLES) as [Engine["availability"], string][]).map(([k, title]) => (
+                    <button
+                      key={k}
+                      onClick={() => setAvailFilter((p) => ({ ...p, [k]: !p[k] }))}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-[0.7rem] font-display italic transition",
+                        availFilter[k]
+                          ? "border-[color-mix(in_oklab,var(--brass)_60%,var(--ink)_40%)] bg-[color-mix(in_oklab,var(--brass)_45%,var(--paper-tint)_55%)] text-[color-mix(in_oklab,var(--ink)_85%,transparent)]"
+                          : "border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] text-[color-mix(in_oklab,var(--ink)_55%,transparent)] line-through",
+                      )}
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dispatch settings */}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="eyebrow">Stagger between openings (ms)</span>
+                  <div className="mt-1 flex items-center gap-2 rounded-md border border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] px-3 py-1.5">
+                    <input
+                      type="range"
+                      min={0}
+                      max={1500}
+                      step={50}
+                      value={hostingDelayMs}
+                      onChange={(e) => setHostingDelayMs(Number(e.target.value))}
+                      className="flex-1 accent-[color-mix(in_oklab,var(--seal)_60%,var(--ink)_40%)]"
+                    />
+                    <span className="w-12 text-right font-mono text-[0.78rem] tabular-nums text-[color-mix(in_oklab,var(--ink)_85%,transparent)]">{hostingDelayMs}ms</span>
+                  </div>
+                  <span className="mt-1 block text-[0.65rem] italic text-[color-mix(in_oklab,var(--ink)_60%,transparent)]">
+                    Helps when dispatching dozens — keeps the browser from blocking pop-ups.
+                  </span>
+                </label>
+
+                <div className="space-y-2">
+                  <ToggleRow
+                    label="Auto-tick regional engines from GPS"
+                    sub="EXIF origin ⇒ pre-select that area's engines."
+                    on={autoTickRegional}
+                    onChange={setAutoTickRegional}
+                  />
+                  <ToggleRow
+                    label="Skip login-only engines"
+                    sub="Hide PimEyes, FaceCheck.ID, FindClone from the list."
+                    on={skipLoginOnly}
+                    onChange={setSkipLoginOnly}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Tier-grouped engine list */}
       <div className="max-h-[420px] overflow-y-auto px-3 py-3">
@@ -366,6 +493,27 @@ export function Engines({
   );
 }
 
+function ToggleRow({ label, sub, on, onChange }: { label: string; sub?: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className={cn(
+        "flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left transition",
+        on
+          ? "border-[color-mix(in_oklab,var(--seal)_55%,transparent)] bg-[color-mix(in_oklab,var(--brass)_22%,transparent)]"
+          : "border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_55%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-tint)_75%,transparent)]",
+      )}
+    >
+      <span className="leading-tight">
+        <span className="block font-display text-sm font-semibold italic">{label}</span>
+        {sub && <span className="block text-[0.7rem] font-body-serif text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">{sub}</span>}
+      </span>
+      {on ? <ToggleRight className="mt-0.5 h-5 w-5 shrink-0 text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" /> : <ToggleLeft className="mt-0.5 h-5 w-5 shrink-0 text-[color-mix(in_oklab,var(--ink)_35%,transparent)]" />}
+    </button>
+  );
+}
+
 /** Upload an image to Convex storage; resolves with the hosted URL. */
 export function useUploader() {
   const storeImage = useAction(api.inquiries.storeImage);
@@ -374,6 +522,41 @@ export function useUploader() {
     const result = await storeImage({ base64, mimeType, fileName });
     return result.url as string;
   };
+}
+
+/** Open a list of engines with a staggered delay between windows. Helps
+ *  most browsers when dispatching a dozen or more at once. */
+export function dispatchWithStagger(
+  asset: { blob: Blob; hostedUrl?: string | null; id: string; fileName?: string },
+  engineIds: string[],
+  delayMs = 80,
+): { opened: number; skipped: number } {
+  let opened = 0;
+  let skipped = 0;
+  engineIds.forEach((id, idx) => {
+    const engine = ENGINES.find((e) => e.id === id);
+    if (!engine) { skipped++; return; }
+    setTimeout(() => {
+      if (engine.mode === "form-upload") {
+        try {
+          const form = dispatchByForm(engine, asset.blob);
+          form.submit();
+          setTimeout(() => form.remove(), 30_000);
+          opened++;
+        } catch { skipped++; }
+      } else if (engine.mode === "url-open") {
+        if (asset.hostedUrl) {
+          openByUrl(engine, asset.hostedUrl);
+          opened++;
+        } else {
+          skipped++;
+        }
+      } else {
+        skipped++;
+      }
+    }, idx * delayMs);
+  });
+  return { opened, skipped };
 }
 
 // Re-export the helper used in Inquisitor.tsx to derive coord->region labels.

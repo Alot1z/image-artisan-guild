@@ -23,7 +23,8 @@ import {
   type InquiryAsset,
   SOURCE_LABELS,
 } from "@/lib/inquiry-store";
-import { ENGINES, dispatchByForm, openByUrl } from "@/lib/engines";
+import { ENGINES } from "@/lib/engines";
+import { dispatchWithStagger } from "@/components/inquisitor/Engines";
 import type { HistoryEntry } from "@/lib/history";
 import { blobToDataUrl } from "@/lib/image-utils";
 import { readGeoPoint } from "@/lib/exif";
@@ -188,18 +189,20 @@ export default function Inquisitor() {
         });
       }
     }
-    for (const engineId of ids) {
-      const engine = ENGINES.find((e) => e.id === engineId);
-      if (!engine) continue;
-      if (engine.mode === "form-upload") {
-        const form = dispatchByForm(engine, asset.blob);
-        try {
-          form.submit();
-          setTimeout(() => form.remove(), 30_000);
-        } catch { form.remove(); }
-      } else if (engine.mode === "url-open" && hosted) {
-        openByUrl(engine, hosted);
-      }
+    // Staggered dispatch — modern browsers block bursts of pop-ups; spacing
+    // them keeps the "open in a new tab" semantics intact.
+    const { opened, skipped } = dispatchWithStagger(
+      { blob: asset.blob, hostedUrl: hosted, id: asset.id, fileName: asset.fileName },
+      ids,
+      80,
+    );
+    if (opened > 0) {
+      toast({
+        title: `Dispatched to ${opened} engine${opened === 1 ? "" : "s"}`,
+        description: skipped > 0
+          ? `${skipped} skipped (needs hosting or invalid id).`
+          : "Open the new tabs to inspect each result.",
+      });
     }
     await store.recordAll({ prompt });
   }, [store, uploader, prompt]);

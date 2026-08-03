@@ -30,19 +30,13 @@ import type { HistoryEntry } from "@/lib/history";
 import { blobToDataUrl } from "@/lib/image-utils";
 import { readGeoPoint } from "@/lib/exif";
 import { suggestedEngineIds, commonNameForGeo } from "@/lib/region";
-
-interface AggregateMatch {
-  id: string;
-  title: string;
-  sourceUrl: string;
-  imageUrl?: string;
-  thumbnailUrl?: string;
-  width?: number;
-  height?: number;
-  score?: number;
-  matchType?: string;
-  services?: string[];
-}
+import type {
+  AggregateDispatchResult,
+  AggregateResult,
+  EngineStatus,
+  ProxyEngineError,
+  SearchPhase,
+} from "@/lib/proxyTypes";
 import logo from "@/assets/logo.svg";
 
 export default function Inquisitor() {
@@ -50,10 +44,14 @@ export default function Inquisitor() {
   const [params] = useSearchParams();
   const uploader = useUploader();
   const aggregateSearch = useAction(api.aggregate.aggregateSearch);
+  const manifestAction = useAction(api.aggregate.enginesManifest);
   const [prompt, setPrompt] = useState("");
   const [uploadingLocal, setUploadingLocal] = useState<Record<string, boolean>>({});
-  const [aggregateResults, setAggregateResults] = useState<AggregateMatch[]>([]);
-  const [aggregateBusy, setAggregateBusy] = useState(false);
+  const [phase, setPhase] = useState<SearchPhase>("idle");
+  const [aggregateResults, setAggregateResults] = useState<AggregateResult[]>([]);
+  const [aggregateErrors, setAggregateErrors] = useState<ProxyEngineError[]>([]);
+  const [failureNotice, setFailureNotice] = useState<string | null>(null);
+  const [manifestStatus, setManifestStatus] = useState<Record<string, EngineStatus>>({});
   const [autoTickRegional, setAutoTickRegional] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -158,6 +156,25 @@ export default function Inquisitor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, regionLabel, autoTickRegional]);
 
+  // Live adapter manifest from the external proxy (active vs planned).
+  useEffect(() => {
+    let alive = true;
+    manifestAction({})
+      .then((result) => {
+        if (!alive || !result.ok) return;
+        const map: Record<string, EngineStatus> = {};
+        for (const entry of result.entries) map[entry.id] = entry.status;
+        setManifestStatus(map);
+      })
+      .catch((error) => {
+        // Non-fatal — the catalogue falls back to the static registry.
+        console.error("[inquisitor] adapter manifest sync failed", error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [manifestAction]);
+
   const handleSource = useCallback(async (source: InquiryAsset["source"], payload: Blob) => {
     await store.add(source, payload);
   }, [store]);
@@ -190,8 +207,10 @@ export default function Inquisitor() {
   }, [store, uploader]);
 
   const ensureHostThenDispatch = useCallback(async (asset: InquiryAsset, ids: string[]) => {
-    setAggregateBusy(true);
+    setPhase("uploading");
     setAggregateResults([]);
+    setAggregateErrors([]);
+    setFailureNotice(null);
     let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
     if (!hosted) {
       try {
@@ -199,36 +218,62 @@ export default function Inquisitor() {
         hosted = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
         store.setHostedUrl(asset.id, hosted);
       } catch {
+        setPhase("failed");
+        setFailureNotice("The plate could not be hosted — the external proxy needs a publicly reachable image URL before it can search.");
         toast({
           title: "Could not host the plate",
           description: "The external proxy needs a publicly reachable image URL before it can search.",
           variant: "destructive",
         });
-        setAggregateBusy(false);
         return;
       }
     }
 
-    const response = await aggregateSearch({ imageUrl: hosted, engineIds: ids });
-    if (!response.ok) {
-      const description = response.error === "missing-config"
-        ? "Add RIS_PROXY_URL and RIS_PROXY_KEY in the Keys tab to enable the external search proxy."
-        : response.error === "rate-limited"
-          ? "The proxy is rate-limiting this inquiry. Wait a moment and retry."
-          : "The proxy could not return a valid result set. Check its deployment and contract.";
-      toast({ title: "Aggregate search unavailable", description, variant: "destructive" });
-      setAggregateBusy(false);
+    setPhase("searching");
+    let response: AggregateDispatchResult;
+    try {
+      response = await aggregateSearch({ imageUrl: hosted, engineIds: ids });
+    } catch (error) {
+      // Rollback safety: an unreachable proxy must never crash the workbench.
+      console.error("[inquisitor] aggregate search call failed", error);
+      setPhase("failed");
+      setFailureNotice("Search service temporarily unavailable.");
+      toast({ title: "Aggregate search unavailable", description: "Search service temporarily unavailable.", variant: "destructive" });
       return;
     }
 
-    setAggregateResults(response.results as AggregateMatch[]);
+    if (!response.ok) {
+      const description = response.error === "missing-config"
+        ? "Add RIS_PROXY_URL and RIS_PROXY_KEY in the Keys tab to enable the external search proxy."
+        : response.error === "auth-failed"
+          ? "The search service could not verify this inquiry. Please try again shortly."
+          : response.error === "rate-limited"
+            ? "The proxy is rate-limiting this inquiry. Wait a moment and retry."
+            : response.error === "invalid-response"
+              ? "The proxy returned an unexpected response."
+              : "Search service temporarily unavailable.";
+      if (response.error === "auth-failed" || response.error === "proxy-error") {
+        // Logged securely (kind + status only) — never echo credentials.
+        console.error("[inquisitor] aggregate search failed", { kind: response.error, status: response.status });
+      }
+      setPhase("failed");
+      setFailureNotice(description);
+      toast({ title: "Aggregate search unavailable", description, variant: "destructive" });
+      return;
+    }
+
+    setPhase("processing");
+    setAggregateResults(response.results);
+    setAggregateErrors(response.errors);
     await store.recordAll({ prompt });
-    setAggregateBusy(false);
+    setPhase("complete");
     toast({
       title: `Proxy search completed across ${response.serviceCount} services`,
       description: response.results.length > 0
-        ? `${response.results.length} ranked matches returned to the workbench.`
-        : "No matching folios were returned for this plate.",
+        ? `${response.results.length} ranked matches returned${response.errors.length > 0 ? `, ${response.errors.length} engine${response.errors.length === 1 ? "" : "s"} failed` : ""}.`
+        : response.errors.length > 0
+          ? "No matches returned; every selected engine failed."
+          : "No matching folios were returned for this plate.",
     });
   }, [aggregateSearch, store, uploader, prompt]);
 
@@ -383,7 +428,11 @@ export default function Inquisitor() {
                 autoTickRegional={autoTickRegional}
                 onAutoTickRegionalChange={setAutoTickRegional}
                 aggregateResults={aggregateResults}
-                aggregateBusy={aggregateBusy}
+                aggregateBusy={phase === "uploading" || phase === "searching" || phase === "processing"}
+                aggregatePhase={phase}
+                aggregateErrors={aggregateErrors}
+                failureNotice={failureNotice}
+                manifestStatus={manifestStatus}
                 geoHint={activeGeoForEngines}
                 regionLabel={activeRegionLabel}
               />

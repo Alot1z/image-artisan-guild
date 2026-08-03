@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronRight, Globe, MapPin, Search, Send, Sparkles,
   Loader2, ExternalLink, UploadCloud, ToggleLeft, ToggleRight,
   SlidersHorizontal, Settings2, CheckSquare, Square, RotateCcw,
+  AlertTriangle, CircleDot, CircleDashed,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,12 @@ import {
 } from "@/lib/engines";
 import type { GeoPoint } from "@/lib/exif";
 import type { InquiryAsset } from "@/lib/inquiry-store";
+import type {
+  AggregateResult,
+  EngineStatus,
+  ProxyEngineError,
+  SearchPhase,
+} from "@/lib/proxyTypes";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -38,26 +45,17 @@ interface Props {
   onNotesChange: (value: string) => void;
   autoTickRegional: boolean;
   onAutoTickRegionalChange: (value: boolean) => void;
-  aggregateResults: AggregateMatch[];
+  aggregateResults: AggregateResult[];
   aggregateBusy: boolean;
+  aggregatePhase: SearchPhase;
+  aggregateErrors: ProxyEngineError[];
+  failureNotice?: string | null;
+  manifestStatus?: Record<string, EngineStatus>;
   geoHint?: GeoPoint | null;
   regionLabel?: string;
 }
 
 const FEATURE_LABEL = FEATURE_TITLES;
-
-type AggregateMatch = {
-  id: string;
-  title: string;
-  sourceUrl: string;
-  imageUrl?: string;
-  thumbnailUrl?: string;
-  width?: number;
-  height?: number;
-  score?: number;
-  matchType?: string;
-  services?: string[];
-};
 
 export function Engines({
   assets, activeId, hostedUrls, uploading,
@@ -65,7 +63,8 @@ export function Engines({
   onDispatchAll, onDispatchSelected,
   prompt, onPromptChange, notes, onNotesChange,
   autoTickRegional, onAutoTickRegionalChange,
-  aggregateResults, aggregateBusy,
+  aggregateResults, aggregateBusy, aggregatePhase, aggregateErrors,
+  failureNotice = null, manifestStatus = {},
   geoHint, regionLabel,
 }: Props) {
   const [filter, setFilter] = useState<"all">("all");
@@ -136,12 +135,23 @@ export function Engines({
     onEnginesChange(active.id, Array.from(next));
   };
 
+  // Adapter availability from the external proxy manifest (source of truth).
+  const engineStatus = (engine: Engine): EngineStatus =>
+    manifestStatus[engine.id] ?? "planned";
+  const manifestLoaded = Object.keys(manifestStatus).length > 0;
+  const liveCount = ENGINES.filter((e) => engineStatus(e) === "active").length;
+
   return (
     <div className="archive-card relative overflow-hidden rounded-lg">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-3">
         <div>
           <p className="eyebrow">The Catalogue of Engines</p>
           <p className="font-display text-lg italic">Every index starts selected. Trim the list as you wish.</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.68rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_65%,transparent)]">
+            <span className="inline-flex items-center gap-1"><CircleDot className="h-3 w-3 text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" /> live on the proxy</span>
+            <span className="inline-flex items-center gap-1"><CircleDashed className="h-3 w-3 text-[color-mix(in_oklab,var(--ink)_45%,transparent)]" /> planned</span>
+            {manifestLoaded && <span>· {liveCount} adapter{liveCount === 1 ? "" : "s"} reported live</span>}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -389,6 +399,18 @@ export function Engines({
                                 <span className="rounded-sm border border-[color-mix(in_oklab,var(--ink)_20%,transparent)] px-1.5 py-0.5 text-[0.55rem] font-display uppercase tracking-wider text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">
                                   {FEATURE_LABEL[engine.feature]}
                                 </span>
+                                <span
+                                  title={engineStatus(engine) === "active" ? "Adapter live on the external proxy" : "Adapter planned — not yet live on the external proxy"}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[0.55rem] font-display uppercase tracking-wider",
+                                    engineStatus(engine) === "active"
+                                      ? "border-[color-mix(in_oklab,var(--seal)_55%,transparent)] text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)]"
+                                      : "border-[color-mix(in_oklab,var(--ink)_22%,transparent)] text-[color-mix(in_oklab,var(--ink)_55%,transparent)]",
+                                  )}
+                                >
+                                  {engineStatus(engine) === "active" ? <CircleDot className="h-2.5 w-2.5" /> : <CircleDashed className="h-2.5 w-2.5" />}
+                                  {engineStatus(engine) === "active" ? "Live" : "Planned"}
+                                </span>
                                 {engine.availability !== "free" && (
                                   <span className={cn(
                                     "rounded-sm border px-1.5 py-0.5 text-[0.55rem] font-display uppercase tracking-wider",
@@ -401,7 +423,7 @@ export function Engines({
                                     {engine.availability === "freemium" ? "Freemium" : engine.availability === "login" ? "Login" : "Flaky"}
                                   </span>
                                 )}
-                                                {engine.needsHost && (
+                                {engine.needsHost && (
                                   <span className="text-[0.55rem] italic text-[color-mix(in_oklab,var(--ink)_55%,transparent)]" title="The external proxy receives the hosted plate URL">
                                     ◐ proxy
                                   </span>
@@ -432,16 +454,46 @@ export function Engines({
       </div>
 
       {/* Ranked proxy results */}
-      {active && (aggregateBusy || aggregateResults.length > 0) && (
+      {active && (aggregateBusy || aggregateResults.length > 0 || aggregateErrors.length > 0 || failureNotice) && (
         <div className="border-t border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow">The Proxy Ledger</p>
               <p className="font-display text-lg italic">Ranked matches from the external search contract.</p>
             </div>
-            {aggregateBusy && <Loader2 className="h-4 w-4 animate-spin text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />}
+            {aggregateBusy && (
+              <span className="flex items-center gap-2 text-[0.68rem] font-display italic uppercase tracking-wider text-[color-mix(in_oklab,var(--ink)_65%,transparent)]">
+                {aggregatePhase === "uploading" ? "Hosting plate" : aggregatePhase === "searching" ? "Searching catalogues" : "Collating results"}
+                <Loader2 className="h-4 w-4 animate-spin text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />
+              </span>
+            )}
           </div>
-          {!aggregateBusy && aggregateResults.length === 0 && (
+
+          {failureNotice && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--seal)_14%,transparent)] px-3 py-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)]" />
+              <p className="font-body-serif text-sm italic text-[color-mix(in_oklab,var(--ink)_85%,transparent)]">{failureNotice}</p>
+            </div>
+          )}
+
+          {aggregateErrors.length > 0 && (
+            <div className="mt-3">
+              <p className="eyebrow mb-1.5">Engines that failed this inquiry</p>
+              <div className="flex flex-wrap gap-1.5">
+                {aggregateErrors.map((err) => (
+                  <span
+                    key={err.engine_id}
+                    title={err.error}
+                    className="rounded-full border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--seal)_12%,transparent)] px-2 py-0.5 text-[0.62rem] font-display italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]"
+                  >
+                    {err.engine_id} · failed
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!aggregateBusy && aggregateResults.length === 0 && aggregateErrors.length === 0 && !failureNotice && (
             <p className="mt-3 font-body-serif text-sm italic text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">No matching folios were returned.</p>
           )}
           {aggregateResults.length > 0 && (

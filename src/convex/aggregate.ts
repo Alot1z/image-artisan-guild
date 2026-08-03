@@ -3,55 +3,23 @@
 // The browser never calls provider APIs directly. The proxy owns the adapters
 // for the 518 catalog ids and returns one ranked result list. No response is
 // persisted in Convex.
+//
+// SECURITY: RIS_PROXY_URL / RIS_PROXY_KEY are read from server-side Convex
+// environment variables only — they never reach the browser bundle. The
+// frontend calls these actions, which proxy the request securely.
 
 "use node";
 
 import { action, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-
-const resultValidator = v.object({
-  id: v.string(),
-  title: v.string(),
-  sourceUrl: v.string(),
-  imageUrl: v.optional(v.string()),
-  thumbnailUrl: v.optional(v.string()),
-  width: v.optional(v.number()),
-  height: v.optional(v.number()),
-  score: v.optional(v.number()),
-  matchType: v.optional(v.string()),
-  services: v.optional(v.array(v.string())),
-});
-
-export type AggregateResult = {
-  id: string;
-  title: string;
-  sourceUrl: string;
-  imageUrl?: string;
-  thumbnailUrl?: string;
-  width?: number;
-  height?: number;
-  score?: number;
-  matchType?: string;
-  services?: string[];
-};
-
-type AggregateSuccess = {
-  ok: true;
-  searchedAt: number;
-  serviceCount: number;
-  results: AggregateResult[];
-};
-
-type AggregateFailure = {
-  ok: false;
-  error: "missing-config" | "invalid-response" | "proxy-error" | "rate-limited";
-  status?: number;
-  serviceCount: number;
-  results: [];
-};
-
-export type AggregateSearchResponse = AggregateSuccess | AggregateFailure;
+import type {
+  AggregateDispatchResult,
+  AggregateResult,
+  EngineManifestEntry,
+  EngineManifestResult,
+  ProxyEngineError,
+} from "../lib/proxyTypes";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -63,6 +31,20 @@ function asString(value: unknown): string | undefined {
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Sanitize the proxy's `errors` array (engine_id + reason only). */
+function sanitizeErrors(payload: unknown): ProxyEngineError[] {
+  if (!isRecord(payload) || !Array.isArray(payload.errors)) return [];
+  const out: ProxyEngineError[] = [];
+  for (const raw of payload.errors) {
+    if (!isRecord(raw)) continue;
+    const engineId = asString(raw.engine_id) ?? asString(raw.engineId);
+    const message = asString(raw.error);
+    if (!engineId || !message) continue;
+    out.push({ engine_id: engineId, error: message.slice(0, 200) });
+  }
+  return out;
 }
 
 function normalizeResults(payload: unknown): AggregateResult[] | null {
@@ -108,14 +90,15 @@ function normalizeResults(payload: unknown): AggregateResult[] | null {
 /**
  * Internal implementation. The proxy contract is intentionally small:
  * POST { imageUrl, engineIds } with a bearer key, and return
- * { results: [...] } (or { matches: [...] }).
+ * { results: [...] } (or { matches: [...] }) plus an optional
+ * `errors` array of per-engine failures.
  */
 export const dispatchAggregateSearch = internalAction({
   args: {
     imageUrl: v.string(),
     engineIds: v.array(v.string()),
   },
-  handler: async (_ctx, { imageUrl, engineIds }): Promise<AggregateSearchResponse> => {
+  handler: async (_ctx, { imageUrl, engineIds }): Promise<AggregateDispatchResult> => {
     const proxyUrl = process.env.RIS_PROXY_URL?.trim();
     const proxyKey = process.env.RIS_PROXY_KEY?.trim();
     const cleanImageUrl = imageUrl.trim();
@@ -140,6 +123,12 @@ export const dispatchAggregateSearch = internalAction({
       return { ok: false, error: "proxy-error", serviceCount: selectedIds.length, results: [] };
     }
 
+    // Auth rejections are logged server-side (status only) and mapped to a
+    // generic client message — never echo the credential or the body.
+    if (response.status === 401 || response.status === 403) {
+      console.error("[aggregate] proxy rejected credentials", { status: response.status });
+      return { ok: false, error: "auth-failed", status: response.status, serviceCount: selectedIds.length, results: [] };
+    }
     if (response.status === 429) {
       return { ok: false, error: "rate-limited", status: 429, serviceCount: selectedIds.length, results: [] };
     }
@@ -166,6 +155,7 @@ export const dispatchAggregateSearch = internalAction({
       searchedAt: Date.now(),
       serviceCount: selectedIds.length,
       results: results.slice(0, 200),
+      errors: sanitizeErrors(payload),
     };
   },
 });
@@ -176,9 +166,72 @@ export const aggregateSearch = action({
     imageUrl: v.string(),
     engineIds: v.array(v.string()),
   },
-  handler: async (ctx, args): Promise<AggregateSearchResponse> => {
+  handler: async (ctx, args): Promise<AggregateDispatchResult> => {
     return ctx.runAction(internal.aggregate.dispatchAggregateSearch, args);
   },
 });
 
-void resultValidator;
+/** Derive the adapter-manifest endpoint from the configured proxy URL. */
+function manifestEndpointFor(proxyUrl: string): string {
+  const trimmed = proxyUrl.replace(/\/+$/, "");
+  const aggregatePath = /\/api\/aggregate-search$/i;
+  const base = aggregatePath.test(trimmed) ? trimmed.replace(aggregatePath, "") : trimmed;
+  return `${base}/api/adapters`;
+}
+
+/**
+ * Live adapter manifest from the external proxy (GET /api/adapters).
+ * Lets the workbench distinguish "active" adapters from "planned" ones
+ * without ever shipping the proxy key to the browser.
+ */
+export const enginesManifest = action({
+  args: {},
+  handler: async (): Promise<EngineManifestResult> => {
+    const proxyUrl = process.env.RIS_PROXY_URL?.trim();
+    const proxyKey = process.env.RIS_PROXY_KEY?.trim();
+    if (!proxyUrl || !proxyKey) return { ok: false, error: "missing-config" };
+
+    let response: Response;
+    try {
+      response = await fetch(manifestEndpointFor(proxyUrl), {
+        headers: { Authorization: `Bearer ${proxyKey}` },
+      });
+    } catch (error) {
+      console.error("[aggregate] adapter manifest request failed", error);
+      return { ok: false, error: "proxy-error" };
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: "auth-failed" };
+    }
+    if (!response.ok) {
+      return { ok: false, error: "proxy-error" };
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      return { ok: false, error: "invalid-response" };
+    }
+    if (!isRecord(payload) || !Array.isArray(payload.adapters)) {
+      return { ok: false, error: "invalid-response" };
+    }
+
+    const entries: EngineManifestEntry[] = [];
+    for (const raw of payload.adapters) {
+      if (!isRecord(raw)) continue;
+      const id = asString(raw.id);
+      if (!id) continue;
+      const capabilities = isRecord(raw.capabilities) ? raw.capabilities : undefined;
+      const integrationType = asString(capabilities?.integrationType);
+      entries.push({
+        id,
+        name: asString(raw.name) ?? id,
+        status: integrationType === "unavailable" ? "planned" : "active",
+        healthy: typeof raw.healthy === "boolean" ? raw.healthy : undefined,
+        integrationType,
+      });
+    }
+    return { ok: true, entries };
+  },
+});

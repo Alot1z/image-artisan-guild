@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { config } from "../config.js";
-import { log } from "../logging.js";
 import type { AdapterError, IImageSearchAdapter, NormalizedResult } from "../types.js";
 import { BingVisualAdapter } from "./bing.js";
 import { SauceNaoApiAdapter } from "./api/sauceNaoAdapter.js";
@@ -10,6 +9,10 @@ import { proxyConfig } from "../core/config.js";
 import { AdapterRegistry } from "../core/registry.js";
 import { RoutingEngine } from "../core/router.js";
 import { ExecutionScheduler } from "../core/scheduler.js";
+import { HealthCache, NormalizedCache } from "../core/cache.js";
+import { hashUrl, sanitizeResult } from "../core/normalizer.js";
+import { rankResults } from "../core/ranker.js";
+import { createLogger, type TraceContext } from "../core/observability.js";
 
 const registry = new AdapterRegistry();
 registry
@@ -19,7 +22,9 @@ registry
   .register(new GoogleLensAdapter());
 
 const scheduler = new ExecutionScheduler(proxyConfig.policies);
-const router = new RoutingEngine(registry, scheduler);
+const healthCache = new HealthCache();
+const normalizedCache = new NormalizedCache(proxyConfig.policies.cacheMaxEntries, proxyConfig.policies.cacheTtlMs);
+const router = new RoutingEngine(registry, scheduler, healthCache);
 
 export interface ManagerResult {
   results: NormalizedResult[];
@@ -38,27 +43,65 @@ function cacheKey(imageUrl: string, engineIds: string[]): string {
   return crypto.createHash("sha256").update(`${imageUrl}\n${[...engineIds].sort().join("\n")}`).digest("hex");
 }
 
-export async function executeAdapters(imageUrl: string, engineIds: string[], requestId: string): Promise<ManagerResult> {
+function normalizedKey(engineId: string, imageUrl: string): string {
+  return `${engineId}|${hashUrl(imageUrl)}`;
+}
+
+export async function executeAdapters(
+  imageUrl: string,
+  engineIds: string[],
+  trace: TraceContext = {},
+): Promise<ManagerResult> {
+  const logger = createLogger(trace);
   const uniqueIds = [...new Set(engineIds)];
-  const routed = await router.route({ imageUrl, engineIds: uniqueIds, priority: "user_requested" });
-  const errors = [...routed.errors, ...routed.skipped];
-  const deduped = new Map<string, NormalizedResult>();
-  for (const found of routed.results) {
-    const key = found.url.toLowerCase().replace(/[?#].*$/, "");
-    const previous = deduped.get(key);
-    if (!previous || found.confidence > previous.confidence) deduped.set(key, found);
+
+  // Level 2: serve per-engine normalized results from the NormalizedCache.
+  const served: NormalizedResult[] = [];
+  const remaining: string[] = [];
+  for (const id of uniqueIds) {
+    const cached = normalizedCache.get(normalizedKey(id, imageUrl));
+    if (cached) served.push(...cached);
+    else remaining.push(id);
   }
-  const results = [...deduped.values()].sort((a, b) => b.confidence - a.confidence).slice(0, config.maxResults);
-  log({
+
+  const routed = remaining.length > 0
+    ? await router.route({ imageUrl, engineIds: remaining, priority: "user_requested" })
+    : {
+        results: [] as NormalizedResult[],
+        errors: [] as AdapterError[],
+        skipped: [] as AdapterError[],
+        perEngine: new Map<string, NormalizedResult[]>(),
+      };
+
+  for (const [engineId, results] of routed.perEngine) {
+    const sanitized = results.flatMap((item) => {
+      const clean = sanitizeResult(item, engineId);
+      return clean ? [clean] : [];
+    });
+    if (sanitized.length > 0) normalizedCache.set(normalizedKey(engineId, imageUrl), sanitized);
+  }
+
+  const errors = [...routed.errors, ...routed.skipped];
+  const all = [...served, ...routed.results].flatMap((item) => {
+    const clean = sanitizeResult(item, typeof item?.source_engine === "string" ? item.source_engine : "unknown");
+    return clean ? [clean] : [];
+  });
+  const ranked = rankResults(all, {
+    weights: proxyConfig.weights,
+    maxResults: config.maxResults,
+  });
+
+  logger({
     event: "aggregate_complete",
-    request_id: requestId,
     requested_count: uniqueIds.length,
+    routed_count: remaining.length,
+    cached_count: uniqueIds.length - remaining.length,
     success_count: uniqueIds.length - errors.length,
     failure_count: errors.length,
-    result_count: results.length,
+    result_count: ranked.length,
     circuit_trips: scheduler.circuitSnapshot().filter((item) => item.state === "open").length,
   });
-  return { results, errors };
+  return { results: ranked, errors };
 }
 
 export function cacheKeyFor(imageUrl: string, engineIds: string[]): string {

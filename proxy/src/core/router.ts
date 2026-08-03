@@ -1,5 +1,6 @@
 import type { IImageSearchAdapter, NormalizedResult, RawSearchResult } from "../adapters/base.js";
 import type { AdapterError } from "../types.js";
+import type { HealthCache } from "./cache.js";
 import { AdapterRegistry } from "./registry.js";
 import { ExecutionScheduler, type SchedulerResult, type TaskPriority } from "./scheduler.js";
 
@@ -15,6 +16,8 @@ export interface RoutingOutcome {
   results: NormalizedResult[];
   errors: AdapterError[];
   skipped: AdapterError[];
+  /** Normalized results grouped by the adapter that produced them. */
+  perEngine: Map<string, NormalizedResult[]>;
 }
 
 export class RoutingEngine {
@@ -23,12 +26,14 @@ export class RoutingEngine {
   constructor(
     private readonly registry: AdapterRegistry,
     private readonly scheduler: ExecutionScheduler,
+    private readonly healthCache?: HealthCache,
   ) {}
 
   async route(request: RoutingRequest): Promise<RoutingOutcome> {
     const defaultPriority = request.priority ?? "user_requested";
     const errors: AdapterError[] = [];
     const skipped: AdapterError[] = [];
+    const perEngine = new Map<string, NormalizedResult[]>();
     const tasks = [] as Array<{
       adapter: IImageSearchAdapter;
       priority: TaskPriority;
@@ -56,7 +61,7 @@ export class RoutingEngine {
         signal: request.signal,
         run: async () => {
           await this.prepare(adapter);
-          if (!(await adapter.healthCheck())) throw new Error("Adapter health check failed");
+          if (!(await this.healthOf(adapter))) throw new Error("Adapter health check failed");
           const raw: RawSearchResult[] = await adapter.execute(request.imageUrl);
           return adapter.normalize(raw);
         },
@@ -65,8 +70,8 @@ export class RoutingEngine {
 
     const settled = await this.scheduler.execute(tasks);
     const results: NormalizedResult[] = [];
-    for (const item of settled) this.collect(item, results, errors);
-    return { results, errors, skipped };
+    for (const item of settled) this.collect(item, results, perEngine, errors);
+    return { results, errors, skipped, perEngine };
   }
 
   private async prepare(adapter: IImageSearchAdapter): Promise<void> {
@@ -76,13 +81,26 @@ export class RoutingEngine {
     this.initialized.add(adapter);
   }
 
+  private async healthOf(adapter: IImageSearchAdapter): Promise<boolean> {
+    const cached = this.healthCache?.get(adapter.id);
+    if (cached) return cached.healthy;
+    const healthy = await adapter.healthCheck();
+    if (this.healthCache) this.healthCache.set(adapter.id, { healthy, checkedAt: Date.now() });
+    return healthy;
+  }
+
   private collect(
     item: SchedulerResult<NormalizedResult[]>,
     results: NormalizedResult[],
+    perEngine: Map<string, NormalizedResult[]>,
     errors: AdapterError[],
   ): void {
     if (item.status === "fulfilled") {
-      results.push(...(item.value ?? []));
+      const value = item.value ?? [];
+      results.push(...value);
+      const bucket = perEngine.get(item.adapterId) ?? [];
+      bucket.push(...value);
+      perEngine.set(item.adapterId, bucket);
       return;
     }
     if (item.status === "cancelled") {

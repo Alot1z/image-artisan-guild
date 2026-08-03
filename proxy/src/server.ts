@@ -1,14 +1,14 @@
 import crypto from "node:crypto";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { config } from "./config.js";
-import { LruTtlCache } from "./cache.js";
+import { SearchCache } from "./core/cache.js";
+import { createLogger, newCorrelationId, newTraceId } from "./core/observability.js";
 import { cacheKeyFor, executeAdapters, listAdapters } from "./adapters/manager.js";
-import { log } from "./logging.js";
 import { validatePublicImageUrl } from "./security.js";
 import type { AggregateResponse } from "./types.js";
 
 const app = express();
-const cache = new LruTtlCache<Pick<AggregateResponse, "total_results" | "results" | "errors">>(config.cacheMaxEntries, config.cacheTtlMs);
+const cache = new SearchCache(config.cacheMaxEntries, config.cacheTtlMs);
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "32kb", strict: true }));
@@ -48,9 +48,15 @@ app.get("/api/adapters", async (_req, res) => {
 
 app.post("/api/aggregate-search", async (req: Request, res: Response) => {
   const id = requestId(req);
+  const trace_id = newTraceId();
+  const correlation_id = newCorrelationId();
+  const logger = createLogger({ trace_id, correlation_id });
   res.setHeader("x-request-id", id);
+  res.setHeader("x-trace-id", trace_id);
+  res.setHeader("x-correlation-id", correlation_id);
+
   if (!authorized(req)) {
-    log({ event: "auth_failed", request_id: id });
+    logger({ event: "auth_failed", request_id: id });
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -74,17 +80,35 @@ app.post("/api/aggregate-search", async (req: Request, res: Response) => {
   const key = cacheKeyFor(imageUrl, ids);
   const cached = cache.get(key);
   if (cached) {
-    log({ event: "cache_hit", request_id: id, requested_count: ids.length, result_count: cached.total_results });
+    logger({
+      event: "cache_hit",
+      request_id: id,
+      cache_level: "search",
+      requested_count: ids.length,
+      result_count: cached.total_results,
+    });
     const response: AggregateResponse = { status: "success", request_id: id, ...cached };
     res.json(response);
     return;
   }
 
   const started = Date.now();
-  const aggregate = await executeAdapters(imageUrl, ids, id);
+  const aggregate = await executeAdapters(imageUrl, ids, { trace_id, correlation_id });
   cache.set(key, { total_results: aggregate.results.length, results: aggregate.results, errors: aggregate.errors });
-  log({ event: "request_complete", request_id: id, duration_ms: Date.now() - started });
-  const response: AggregateResponse = { status: "success", request_id: id, total_results: aggregate.results.length, results: aggregate.results, errors: aggregate.errors };
+  logger({
+    event: "request_complete",
+    request_id: id,
+    duration_ms: Date.now() - started,
+    total_results: aggregate.results.length,
+    failures: aggregate.errors.length,
+  });
+  const response: AggregateResponse = {
+    status: "success",
+    request_id: id,
+    total_results: aggregate.results.length,
+    results: aggregate.results,
+    errors: aggregate.errors,
+  };
   res.json(response);
 });
 
@@ -93,7 +117,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     res.status(413).json({ error: "Request body too large" });
     return;
   }
-  log({ event: "request_error", error: "Unhandled request error" });
+  createLogger()({ event: "request_error", error: "Unhandled request error" });
   res.status(500).json({ error: "Internal server error" });
 });
 

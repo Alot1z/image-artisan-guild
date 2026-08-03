@@ -32,6 +32,8 @@ export interface ProxyConfig {
   browserUserAgent: string;
   browserLocale: string;
   browserTimezone: string;
+  /** Optional per-engine source weights for the ranking engine (JSON config only). */
+  weights: Record<string, number>;
 }
 
 export interface ConfigSource {
@@ -47,6 +49,7 @@ export interface ConfigSource {
   browserUserAgent?: string;
   browserLocale?: string;
   browserTimezone?: string;
+  weights?: Record<string, number>;
 }
 
 export const DEFAULT_CONFIG: ProxyConfig = {
@@ -76,6 +79,7 @@ export const DEFAULT_CONFIG: ProxyConfig = {
   browserUserAgent: "",
   browserLocale: "en-US",
   browserTimezone: "UTC",
+  weights: {},
 };
 
 function positiveInt(value: unknown, fallback: number, max?: number): number {
@@ -178,6 +182,7 @@ function mergeSources(...sources: ConfigSource[]): ProxyConfig {
     if (source.browserUserAgent !== undefined) result.browserUserAgent = source.browserUserAgent;
     if (source.browserLocale !== undefined) result.browserLocale = source.browserLocale;
     if (source.browserTimezone !== undefined) result.browserTimezone = source.browserTimezone;
+    if (source.weights) result.weights = { ...result.weights, ...source.weights };
     result.policies = { ...result.policies, ...(source.policies ?? {}) };
     result.secrets = { ...result.secrets, ...(source.secrets ?? {}) };
   }

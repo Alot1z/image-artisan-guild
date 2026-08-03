@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { asConfidence, asRecord, asString, domainOf, fetchJson, result, safeUrl } from "./base.js";
+import { asConfidence, asRecord, asString, fetchJson, result, safeUrl } from "./base.js";
 import type { EngineCapability, IImageSearchAdapter, NormalizedResult, RawSearchResult } from "../types.js";
 
 export class SauceNaoAdapter implements IImageSearchAdapter {
@@ -49,5 +49,3 @@ export class SauceNaoAdapter implements IImageSearchAdapter {
 
   async healthCheck(): Promise<boolean> { return Boolean(config.sauceNaoApiKey); }
 }
-
-void domainOf;

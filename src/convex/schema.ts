@@ -32,12 +32,15 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // add other tables here
-
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
+    // Ephemeral registry of images hosted for URL-mode search engines.
+    // Rows are written by the storeImage action and swept by a cron
+    // (src/convex/crons.ts) after HOSTED_TTL_MS — see src/convex/inquiries.ts.
+    hostedImages: defineTable({
+      storageId: v.string(), // Convex storage id of the blob
+      bytes: v.number(), // blob size in bytes
+      fileName: v.optional(v.string()), // original client filename (optional)
+      createdAt: v.number(), // epoch ms of upload
+    }).index("by_createdAt", ["createdAt"]),
   },
   {
     schemaValidation: false,

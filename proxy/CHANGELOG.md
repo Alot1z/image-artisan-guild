@@ -6,6 +6,20 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **TinEye adapter** (`src/adapters/api/tinEyeAdapter.ts`) — official REST
+  API integration (Basic auth key:secret, `url`/`limit` params) replacing the
+  previous `unavailable` stub. Registered under `tineye`; honest
+  unconfigured state without credentials. Requires `TINEYE_API_KEY` +
+  `TINEYE_API_SECRET` (optional `TINEYE_API_URL`).
+- **Bing Visual Search wire-contract fix** (`src/adapters/bing.ts`) — request
+  body now matches the documented v7.0 contract (form-urlencoded `imageInfo`
+  JSON string, `application/x-www-form-urlencoded`), and normalization now
+  handles the real `tags[] -> actions[] -> value[]` response shape.
+- Test suite `tests/tinEye.test.ts` (7 tests: URL/Basic-auth construction,
+  normalize, missing credentials, retries, invalid response, scheduler
+  timeout, circuit breaker isolation, explicit registration).
+
 ### Planned
 - Additional official-API adapters as permitted integrations become available.
 - Background health-probe loop for circuit-breaker recovery (`half-open`

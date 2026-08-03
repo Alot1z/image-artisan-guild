@@ -217,3 +217,39 @@ performance regression (all work is render-time; retry adds one bounded
 `onRetryEngines` prop on `Engines`, module-local `mergeAggregateResults`
 helper, and three local presentational components (`ScoreMeter`,
 `EngineSourceBadge`, `PhaseSteps`).
+
+---
+
+## 2026-08-03 | Phase 8: Tier 1 Provider Expansion
+
+**Decision**: Backend-only expansion of live Tier 1 coverage in the RIS
+External Proxy: (a) replaced the `tineye` `UnavailableAdapter` stub with a
+real official-API adapter (`proxy/src/adapters/api/tinEyeAdapter.ts`)
+following the existing `BaseApiAdapter` lifecycle and the documented TinEye
+REST contract (Basic auth key:secret, `GET {endpoint}?url=&limit=`);
+(b) fixed the Bing Visual adapter's wire contract to the documented v7.0
+format (form-urlencoded `imageInfo` JSON string body, `tags->actions->value`
+array-aware normalization); (c) wired `TINEYE_API_KEY`/`TINEYE_API_SECRET`/
+`TINEYE_API_URL` into the layered config; (d) added a 7-test suite.
+
+**Reason**: The catalog already listed `tineye` as a target and `bing` as a
+live adapter, but the Bing request body was incompatible with the documented
+API and TinEye had no execution path. Phase 8's goal was real provider
+execution capability without fake availability.
+
+**Alternatives considered**: (a) Keep the TinEye stub and only fix Bing —
+rejected: leaves a documented Tier 1 target with zero execution path;
+(b) implement TinEye via Playwright browser automation — rejected: forbidden
+by the phase non-goals and the honesty rule (official API exists);
+(c) add catalog ids to pad coverage — rejected: violates the catalog
+consistency rule (no adapter → stay unavailable).
+
+**Impact**: Files changed are proxy-only plus the changelog/DECISIONS docs —
+no frontend, Convex, registry design, scheduler/router behavior, normalized
+response contract, or security model changes. New config keys only in
+`proxy/ENV.example` + `proxy/src/core/config.ts`. Verified: `bun run build`
+exit 0; `bun run test` 40 pass / 0 fail (33 prior + 7 new). No measured
+performance regression (single bounded GET per search). Structural change:
+new `tinEyeAdapter.ts`, registration swap in `manager.ts`, `tinEyeStub`
+removed from `stubs.ts`, config `ProxySecrets` extended with
+`tineyeApiKey`/`tineyeApiSecret` and `ProxyConfig` with `tineyeApiUrl`.

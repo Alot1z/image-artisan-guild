@@ -35,15 +35,3 @@ export function unavailableAdapter(id: string, name = id): UnavailableAdapter {
     "No permitted adapter is configured for this engine",
   );
 }
-
-export const tinEyeStub = new UnavailableAdapter(
-  "tineye",
-  "TinEye",
-  {
-    supportsImageUpload: true,
-    supportsUrlInput: false,
-    requiresAuth: true,
-    integrationType: "unavailable",
-  },
-  "TinEye adapter unavailable: configure a permitted account-specific API integration",
-);

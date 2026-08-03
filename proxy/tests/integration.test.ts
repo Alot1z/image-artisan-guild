@@ -162,7 +162,8 @@ describe("RIS external proxy — end-to-end pipeline", () => {
 
   test("fails gracefully for unavailable engines while serving real adapter results", async () => {
     // SauceNAO results for the same image are served from the NormalizedCache;
-    // TinEye is an honest unavailable stub -> partial completion.
+    // TinEye is registered but has no credentials in the test env -> honest
+    // per-engine error, preserving partial completion.
     const response = await aggregate(["saucenao", "tineye"]);
     expect(response.status).toBe(200);
     const json = await response.json() as IntegrationResult;

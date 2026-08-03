@@ -17,6 +17,8 @@ export interface ProxySecrets {
   proxyKey: string;
   sauceNaoApiKey: string;
   bingApiKey: string;
+  tineyeApiKey: string;
+  tineyeApiSecret: string;
 }
 
 export interface ProxyConfig {
@@ -24,6 +26,7 @@ export interface ProxyConfig {
   policies: OperationalPolicies;
   secrets: ProxySecrets;
   bingEndpoint: string;
+  tineyeApiUrl: string;
   lensUploadUrl: string;
   lensResultsTimeoutMs: number;
   browserHeadless: boolean;
@@ -41,6 +44,7 @@ export interface ConfigSource {
   port?: number;
   secrets?: Partial<ProxySecrets>;
   bingEndpoint?: string;
+  tineyeApiUrl?: string;
   lensUploadUrl?: string;
   lensResultsTimeoutMs?: number;
   browserHeadless?: boolean;
@@ -69,8 +73,11 @@ export const DEFAULT_CONFIG: ProxyConfig = {
     proxyKey: "",
     sauceNaoApiKey: "",
     bingApiKey: "",
+    tineyeApiKey: "",
+    tineyeApiSecret: "",
   },
   bingEndpoint: "https://api.bing.microsoft.com/v7.0/images/visualsearch",
+  tineyeApiUrl: "https://api.tineye.com/rest/search/",
   lensUploadUrl: "https://lens.google.com/uploadbyurl",
   lensResultsTimeoutMs: 12_000,
   browserHeadless: true,
@@ -150,6 +157,9 @@ function envSource(env: NodeJS.ProcessEnv): ConfigSource {
   if (env.RIS_PROXY_KEY !== undefined) secrets.proxyKey = env.RIS_PROXY_KEY.trim();
   if (env.SAUCENAO_API_KEY !== undefined) secrets.sauceNaoApiKey = env.SAUCENAO_API_KEY.trim();
   if (env.BING_VISUAL_SEARCH_API_KEY !== undefined) secrets.bingApiKey = env.BING_VISUAL_SEARCH_API_KEY.trim();
+  if (env.TINEYE_API_KEY !== undefined) secrets.tineyeApiKey = env.TINEYE_API_KEY.trim();
+  if (env.TINEYE_API_SECRET !== undefined) secrets.tineyeApiSecret = env.TINEYE_API_SECRET.trim();
+  const tineyeApiUrl = env.TINEYE_API_URL;
 
   return {
     ...(env.PORT !== undefined ? { port: positiveInt(env.PORT, DEFAULT_CONFIG.port, 65_535) } : {}),
@@ -158,6 +168,7 @@ function envSource(env: NodeJS.ProcessEnv): ConfigSource {
     ...(env.BING_VISUAL_SEARCH_ENDPOINT !== undefined
       ? { bingEndpoint: env.BING_VISUAL_SEARCH_ENDPOINT.trim() || DEFAULT_CONFIG.bingEndpoint }
       : {}),
+    ...(tineyeApiUrl !== undefined ? { tineyeApiUrl: tineyeApiUrl.trim() || DEFAULT_CONFIG.tineyeApiUrl } : {}),
     ...(lensUploadUrl !== undefined ? { lensUploadUrl: lensUploadUrl.trim() || DEFAULT_CONFIG.lensUploadUrl } : {}),
     ...(lensResultsTimeoutMs !== undefined ? { lensResultsTimeoutMs } : {}),
     ...(browserHeadless !== undefined ? { browserHeadless } : {}),
@@ -174,6 +185,7 @@ function mergeSources(...sources: ConfigSource[]): ProxyConfig {
   for (const source of sources) {
     if (source.port !== undefined) result.port = positiveInt(source.port, result.port, 65_535);
     if (source.bingEndpoint) result.bingEndpoint = source.bingEndpoint;
+    if (source.tineyeApiUrl) result.tineyeApiUrl = source.tineyeApiUrl.trim();
     if (source.lensUploadUrl) result.lensUploadUrl = source.lensUploadUrl.trim();
     if (source.lensResultsTimeoutMs !== undefined) result.lensResultsTimeoutMs = positiveInt(source.lensResultsTimeoutMs, DEFAULT_CONFIG.lensResultsTimeoutMs);
     if (source.browserHeadless !== undefined) result.browserHeadless = source.browserHeadless;

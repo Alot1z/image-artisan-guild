@@ -13,12 +13,12 @@
 
 - **518-entry contract catalog** — `src/lib/engines.ts` generates exactly 518
   registry rows (55 verified seeds + locale/proxy-lane variants), but only 4
-  ids have adapters on the proxy (`bing`, `saucenao`, `google-lens`, and the
-  `tineye` stub). All other ids return honest "unavailable" errors.
-- **TinEye adapter** — registered as `UnavailableAdapter` stub
-  (`proxy/src/adapters/stubs.ts`); needs a permitted account-specific API
-  integration (`TINEYE_API_KEY`/`TINEYE_API_URL` placeholders exist in
-  `proxy/ENV.example`).
+  ids have adapters on the proxy (`bing`, `saucenao`, `tineye`, `google-lens`).
+  All other ids return honest "unavailable" errors.
+- **TinEye adapter** — real official-API adapter implemented
+  (`proxy/src/adapters/api/tinEyeAdapter.ts`); registered under `tineye` with
+  `integrationType: "official_api"`. Honest unconfigured state until
+  `TINEYE_API_KEY`/`TINEYE_API_SECRET` are set in the proxy deployment.
 - **`enginesManifest` / status sync** — frontend fetches the proxy's adapter
   manifest on mount (`src/convex/aggregate.ts` → `Engines.tsx` "Live/Planned"
   chips). Depends on a live `RIS_PROXY_URL`; falls back silently to "planned".

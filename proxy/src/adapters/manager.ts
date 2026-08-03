@@ -3,8 +3,9 @@ import { config } from "../config.js";
 import type { AdapterError, IImageSearchAdapter, NormalizedResult } from "../types.js";
 import { BingVisualAdapter } from "./bing.js";
 import { SauceNaoApiAdapter } from "./api/sauceNaoAdapter.js";
+import { TinEyeApiAdapter } from "./api/tinEyeAdapter.js";
 import { GoogleLensAdapter } from "./browser/googleLensAdapter.js";
-import { tinEyeStub, unavailableAdapter } from "./stubs.js";
+import { unavailableAdapter } from "./stubs.js";
 import { proxyConfig } from "../core/config.js";
 import { AdapterRegistry } from "../core/registry.js";
 import { RoutingEngine } from "../core/router.js";
@@ -18,7 +19,7 @@ const registry = new AdapterRegistry();
 registry
   .register(new BingVisualAdapter())
   .register(new SauceNaoApiAdapter())
-  .register(tinEyeStub)
+  .register(new TinEyeApiAdapter())
   .register(new GoogleLensAdapter());
 
 const scheduler = new ExecutionScheduler(proxyConfig.policies);

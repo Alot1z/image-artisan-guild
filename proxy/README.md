@@ -26,6 +26,8 @@ flowchart LR
 
 Pipeline: `Request → Validation → Capability Negotiation → Routing Engine → Execution Scheduler → Explicit Provider Registry → Adapters → Normalizer → Ranking Engine → Response`
 
+**Developer docs:** [ARCHITECTURE.md](ARCHITECTURE.md) (system design) · [CONTRIBUTING.md](CONTRIBUTING.md) (adding adapters) · [CHANGELOG.md](CHANGELOG.md) (history)
+
 ## Features
 
 - **Explicit provider registry** — adapters self-register (`registry.register(new Adapter())`); no filesystem scanning or dynamic module discovery.

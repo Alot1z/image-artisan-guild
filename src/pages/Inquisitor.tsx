@@ -54,6 +54,7 @@ export default function Inquisitor() {
   const [uploadingLocal, setUploadingLocal] = useState<Record<string, boolean>>({});
   const [aggregateResults, setAggregateResults] = useState<AggregateMatch[]>([]);
   const [aggregateBusy, setAggregateBusy] = useState(false);
+  const [autoTickRegional, setAutoTickRegional] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<InquiryAsset | null>(null);
@@ -138,7 +139,7 @@ export default function Inquisitor() {
    * suggested engine is preserved (no re-add flicker).
    */
   useEffect(() => {
-    if (!active || !geoPoint) return;
+    if (!autoTickRegional || !active || !geoPoint) return;
     if (autoTickedFor.current.has(active.id)) return;
     const suggested = suggestedEngineIds(geoPoint);
     if (suggested.length === 0) {
@@ -155,7 +156,7 @@ export default function Inquisitor() {
       description: `Origin near ${regionLabel}. Adjust as needed.`,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, regionLabel]);
+  }, [active?.id, regionLabel, autoTickRegional]);
 
   const handleSource = useCallback(async (source: InquiryAsset["source"], payload: Blob) => {
     await store.add(source, payload);
@@ -240,6 +241,7 @@ export default function Inquisitor() {
       url: URL.createObjectURL(croppedBlob),
       hostedUrl: undefined,
     });
+    store.clearHostedUrl(assetId);
     setCropTarget(null);
     toast({ title: "Plate trimmed", description: "The crop was applied; the proxy search is starting again." });
     void ensureHostThenDispatch({ ...source, blob: croppedBlob, size: croppedBlob.size, hostedUrl: undefined }, source.engines);
@@ -378,6 +380,8 @@ export default function Inquisitor() {
                 onPromptChange={setPrompt}
                 notes={active?.notes ?? ""}
                 onNotesChange={(v) => active && store.setNotes(active.id, v)}
+                autoTickRegional={autoTickRegional}
+                onAutoTickRegionalChange={setAutoTickRegional}
                 aggregateResults={aggregateResults}
                 aggregateBusy={aggregateBusy}
                 geoHint={activeGeoForEngines}

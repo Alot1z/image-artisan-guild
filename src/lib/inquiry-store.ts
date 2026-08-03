@@ -85,6 +85,7 @@ export interface Store {
   addFromUrl: (url: string) => Promise<InquiryAsset | null>;
   addFromHistory: (entry: HistoryEntry) => Promise<InquiryAsset | null>;
   setHostedUrl: (id: string, url: string) => void;
+  clearHostedUrl: (id: string) => void;
   recordAll: (extras?: { prompt?: string; tags?: string[] }) => Promise<HistoryEntry[]>;
   toggleFavorite: (id: string) => void;
   deleteHistory: (id: string) => void;
@@ -215,6 +216,15 @@ export function useInquiryStore(): Store {
     setAssets((prev) => prev.map((a) => a.id === id ? { ...a, hostedUrl: url } : a));
   }, []);
 
+  const clearHostedUrl = useCallback((id: string) => {
+    setHostedUrls((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setAssets((prev) => prev.map((a) => a.id === id ? { ...a, hostedUrl: undefined } : a));
+  }, []);
+
   const recordAll = useCallback(async (extras?: { prompt?: string; tags?: string[] }) => {
     const entries: HistoryEntry[] = [];
     for (const asset of assets) {
@@ -276,6 +286,7 @@ export function useInquiryStore(): Store {
     addFromUrl,
     addFromHistory,
     setHostedUrl,
+    clearHostedUrl,
     recordAll,
     toggleFavorite,
     deleteHistory,

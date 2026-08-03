@@ -36,6 +36,8 @@ interface Props {
   onPromptChange: (value: string) => void;
   notes: string;
   onNotesChange: (value: string) => void;
+  autoTickRegional: boolean;
+  onAutoTickRegionalChange: (value: boolean) => void;
   aggregateResults: AggregateMatch[];
   aggregateBusy: boolean;
   geoHint?: GeoPoint | null;
@@ -62,10 +64,11 @@ export function Engines({
   onEnginesChange, onHostedUrlReceived, onUploadRequest,
   onDispatchAll, onDispatchSelected,
   prompt, onPromptChange, notes, onNotesChange,
+  autoTickRegional, onAutoTickRegionalChange,
   aggregateResults, aggregateBusy,
   geoHint, regionLabel,
 }: Props) {
-  const [filter, setFilter] = useState<"all" | "form" | "url">("all");
+  const [filter, setFilter] = useState<"all">("all");
   const [q, setQ] = useState("");
   const [tierOpen, setTierOpen] = useState<Record<Tier, boolean>>({ 1: true, 2: true, 3: false, 4: false });
   // Advanced Options
@@ -77,8 +80,6 @@ export function Engines({
     free: true, freemium: true, login: true, flaky: true,
   });
   // User-tunable dispatch settings
-  const [hostingDelayMs, setHostingDelayMs] = useState(0);
-  const [autoTickRegional, setAutoTickRegional] = useState(true);
   const [skipLoginOnly, setSkipLoginOnly] = useState(false);
 
   const active = assets.find((a) => a.id === activeId) ?? null;
@@ -87,8 +88,9 @@ export function Engines({
   const filtered = useMemo(() => {
     return ENGINES
       .filter((e) => {
-        if (filter === "form" && e.mode !== "form-upload") return false;
-        if (filter === "url" && e.mode !== "url-open") return false;
+        // Every entry is dispatched through the external proxy contract.
+        // Keep the filter state for a stable UI shape while avoiding the old
+        // client-side upload/URL distinction.
         if (!regionFilter[e.region] && !(regionFilter.global && e.region === "global")) return false;
         if (!availFilter[e.availability]) return false;
         if (skipLoginOnly && e.availability === "login") return false;
@@ -188,7 +190,7 @@ export function Engines({
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-3 border-b border-[color-mix(in_oklab,var(--ink)_20%,transparent)] px-4 py-3">
         <div className="flex items-center gap-1 rounded-full border border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] p-0.5">
-          {(["all", "form", "url"] as const).map((f) => (
+          {(["all"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -199,7 +201,7 @@ export function Engines({
                   : "text-[color-mix(in_oklab,var(--ink)_75%,transparent)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_45%,transparent)]",
               )}
             >
-              {f === "all" ? "All" : f === "form" ? "Direct Upload" : "URL Open"}
+              All services
             </button>
           ))}
         </div>
@@ -275,33 +277,21 @@ export function Engines({
                 </div>
               </div>
 
-              {/* Dispatch settings */}
+              {/* Proxy dispatch settings */}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <label className="block">
-                  <span className="eyebrow">Stagger between openings (ms)</span>
-                  <div className="mt-1 flex items-center gap-2 rounded-md border border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] px-3 py-1.5">
-                    <input
-                      type="range"
-                      min={0}
-                      max={1500}
-                      step={50}
-                      value={hostingDelayMs}
-                      onChange={(e) => setHostingDelayMs(Number(e.target.value))}
-                      className="flex-1 accent-[color-mix(in_oklab,var(--seal)_60%,var(--ink)_40%)]"
-                    />
-                    <span className="w-12 text-right font-mono text-[0.78rem] tabular-nums text-[color-mix(in_oklab,var(--ink)_85%,transparent)]">{hostingDelayMs}ms</span>
-                  </div>
-                  <span className="mt-1 block text-[0.65rem] italic text-[color-mix(in_oklab,var(--ink)_60%,transparent)]">
-                    Helps when dispatching dozens — keeps the browser from blocking pop-ups.
-                  </span>
-                </label>
+                <div className="rounded-md border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_55%,transparent)] px-3 py-2">
+                  <p className="eyebrow">Proxy queue</p>
+                  <p className="mt-1 text-[0.72rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">
+                    Provider pacing, concurrency, deduplication, and scraping policy are managed by the external proxy—not by browser tabs.
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <ToggleRow
                     label="Auto-tick regional engines from GPS"
                     sub="EXIF origin ⇒ pre-select that area's engines."
                     on={autoTickRegional}
-                    onChange={setAutoTickRegional}
+                    onChange={onAutoTickRegionalChange}
                   />
                   <ToggleRow
                     label="Skip login-only engines"
@@ -502,7 +492,7 @@ export function Engines({
               {!hostedUrls[active.id] && (
                 <Button variant="outline" size="sm" onClick={() => onUploadRequest(active.id)} disabled={uploading[active.id]} className="gap-2 border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] font-display italic">
                   {uploading[active.id] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
-                  Host image for URL engines
+                  Host image for the proxy
                 </Button>
               )}
               {hostedUrls[active.id] && (

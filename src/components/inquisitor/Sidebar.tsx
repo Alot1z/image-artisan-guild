@@ -1,12 +1,15 @@
 // Sidebar — analytical panels: palette swatches, EXIF, perceptual hash,
-// OCR Lantern (lazy-loaded Tesseract), share & install.
+// OCR Lantern (lazy-loaded Tesseract), Semantic Registry (Exa), share & install.
 import { useEffect, useRef, useState } from "react";
 import {
   Palette as PaletteIcon, Camera as CameraIcon, Fingerprint, Type,
   Share2, Download, Sparkles, Loader2, Copy, Check, Layers,
+  BookOpen, ExternalLink, Globe2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/utils";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { InquiryAsset } from "@/lib/inquiry-store";
 
 interface Props {
@@ -28,12 +31,35 @@ export function Sidebar({ asset, copyPalette, copyExif, copyHash }: Props) {
   const workerRef = useRef<{ terminate: () => Promise<unknown> } | null>(null);
   const runningRef = useRef(false);
 
+  // ── Semantic Registry (Exa) state ──
+  const exaSearch = useAction(api.exa.exaSearch);
+  const [exaQuery, setExaQuery] = useState("");
+  const [exaState, setExaState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [exaHits, setExaHits] = useState<Array<{
+    id: number; title: string; url: string; publishedDate?: string;
+    highlights: string[]; score?: number; favicon?: string;
+  }>>([]);
+  const [exaError, setExaError] = useState("");
+  const [exaMissingKey, setExaMissingKey] = useState(false);
+
   // Reset the lantern when the plate under examination changes.
   useEffect(() => {
     setOcrState("idle");
     setOcrText("");
     setOcrProgress(0);
     setOcrStatus("");
+  }, [asset?.id]);
+
+  // Reset the registry results when the plate under examination changes.
+  useEffect(() => {
+    setExaState("idle");
+    setExaHits([]);
+    setExaError("");
+    setExaMissingKey(false);
+    // Seed the query from whatever descriptive text is handy.
+    setExaQuery(
+      asset?.notes?.trim() || asset?.fileName?.replace(/\.[^.]+$/, "") || "",
+    );
   }, [asset?.id]);
 
   // Terminate any in-flight worker on unmount (do not leak the WASM thread).
@@ -43,6 +69,40 @@ export function Sidebar({ asset, copyPalette, copyExif, copyHash }: Props) {
       workerRef.current?.terminate().catch(() => {});
     };
   }, []);
+
+  const consultRegistry = async () => {
+    const query = exaQuery.trim() || ocrText.trim();
+    if (!query || exaState === "loading") return;
+    setExaState("loading");
+    setExaError("");
+    setExaMissingKey(false);
+    try {
+      const result = await exaSearch({ query, numResults: 8, includeHighlights: true });
+      if (!result.ok) {
+        if (result.error === "missing-key") {
+          setExaMissingKey(true);
+          setExaState("error");
+          setExaError("The Exa API key is not configured.");
+        } else if (result.error === "rate-limited") {
+          setExaState("error");
+          setExaError("The registry is being consulted too often — rest a moment and retry.");
+        } else {
+          setExaState("error");
+          setExaError("The registry could not be reached. Check the key and retry.");
+        }
+        return;
+      }
+      setExaHits(result.hits);
+      setExaState("done");
+      if (result.hits.length === 0) {
+        toast({ title: "Registry consulted", description: "No pages matched that query. Try the OCR transcription instead." });
+      }
+    } catch (err) {
+      console.error("Exa search failed", err);
+      setExaState("error");
+      setExaError("The registry could not be reached. Check your connection and retry.");
+    }
+  };
 
   const lightLantern = async () => {
     if (!asset || runningRef.current) return;
@@ -249,6 +309,105 @@ export function Sidebar({ asset, copyPalette, copyExif, copyHash }: Props) {
             >
               <Sparkles className="h-3.5 w-3.5" /> Retry the lantern
             </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Semantic Registry — Exa */}
+      <div className="archive-card relative overflow-hidden rounded-lg">
+        <div className="flex items-center justify-between border-b border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />
+            <p className="font-display text-base italic">Semantic Registry</p>
+          </div>
+          <span className="catalogue-tag">Exa</span>
+        </div>
+        <div className="p-4">
+          <p className="font-body-serif text-sm leading-relaxed text-[color-mix(in_oklab,var(--ink)_80%,transparent)]">
+            A live-web index consulted by meaning, not pixels. Search the open record with the plate's
+            caption, filename, or OCR transcription to find pages that discuss the same subject.
+          </p>
+
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_70%,transparent)] px-3 py-1.5">
+            <Globe2 className="h-3.5 w-3.5 shrink-0 text-[color-mix(in_oklab,var(--ink)_60%,transparent)]" />
+            <input
+              value={exaQuery}
+              onChange={(e) => setExaQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") consultRegistry(); }}
+              placeholder="Describe the plate, or use its transcription…"
+              className="w-full bg-transparent font-body-serif text-sm italic outline-none placeholder:italic placeholder:text-[color-mix(in_oklab,var(--ink)_45%,transparent)]"
+            />
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {ocrText.trim() && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] px-2.5 font-display italic text-[0.7rem]"
+                onClick={() => { setExaQuery(ocrText.trim().slice(0, 400)); consultRegistry(); }}
+              >
+                <Type className="h-3 w-3" /> Use transcription
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={exaState === "loading" || !(exaQuery.trim() || ocrText.trim())}
+              onClick={consultRegistry}
+              className="ml-auto h-7 gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--seal)_55%,var(--ink)_45%)] px-3 font-display text-[0.7rem] text-[color-mix(in_oklab,var(--paper-tint)_95%,transparent)] hover:opacity-90"
+            >
+              {exaState === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : <BookOpen className="h-3 w-3" />}
+              {exaState === "loading" ? "Consulting…" : "Consult the registry"}
+            </Button>
+          </div>
+
+          {exaMissingKey && (
+            <p className="mt-3 rounded-md border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--paper-deep)_40%,transparent)] px-3 py-2 font-body-serif text-[0.78rem] italic leading-relaxed text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
+              This panel needs an Exa API key. Paste <span className="font-mono not-italic">EXA_API_KEY</span> into
+              the project's <span className="font-display not-italic">Keys</span> tab, then consult the registry again.
+            </p>
+          )}
+          {exaState === "error" && !exaMissingKey && (
+            <p className="mt-3 rounded-md border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--paper-deep)_40%,transparent)] px-3 py-2 font-body-serif text-[0.78rem] italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
+              {exaError}
+            </p>
+          )}
+
+          {exaState === "done" && exaHits.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="eyebrow">{exaHits.length} folios returned</p>
+              {exaHits.map((hit) => (
+                <a
+                  key={`${hit.url}-${hit.id}`}
+                  href={hit.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="plate-hover group flex items-start gap-2.5 rounded-md border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_60%,transparent)] p-2.5 transition"
+                >
+                  {hit.favicon && (
+                    <img src={hit.favicon} alt="" className="mt-0.5 h-4 w-4 shrink-0 rounded-sm" />
+                  )}
+                  <div className="min-w-0 leading-tight">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate font-display text-[0.85rem] font-semibold group-hover:underline">{hit.title}</p>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-[color-mix(in_oklab,var(--ink)_45%,transparent)] opacity-0 transition group-hover:opacity-100" />
+                    </div>
+                    <p className="truncate font-mono text-[0.65rem] text-[color-mix(in_oklab,var(--ink)_60%,transparent)]">{hit.url}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.65rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_65%,transparent)]">
+                      {typeof hit.score === "number" && (
+                        <span className="catalogue-tag">rel {Math.round(hit.score * 100)}%</span>
+                      )}
+                      {hit.publishedDate && <span>{hit.publishedDate.slice(0, 10)}</span>}
+                    </div>
+                    {hit.highlights.length > 0 && (
+                      <p className="mt-1 line-clamp-2 font-body-serif text-[0.75rem] leading-snug text-[color-mix(in_oklab,var(--ink)_72%,transparent)]">
+                        {hit.highlights[0]}
+                      </p>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
           )}
         </div>
       </div>

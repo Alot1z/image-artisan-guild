@@ -24,10 +24,24 @@ export interface NormalizedResult {
   metadata: Record<string, string>;
 }
 
-export interface IImageSearchAdapter {
-  id: string;
-  name: string;
-  capabilities: EngineCapability;
+export interface AdapterHealth {
+  healthy: boolean;
+  checkedAt: number;
+  consecutiveFailures: number;
+  latencyMs?: number;
+  error?: string;
+}
+
+export interface AdapterLifecycle {
+  warmup(): Promise<void>;
+  initialize(): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
+export interface IImageSearchAdapter extends AdapterLifecycle {
+  readonly id: string;
+  readonly name: string;
+  readonly capabilities: EngineCapability;
   execute(imageUrl: string): Promise<RawSearchResult[]>;
   normalize(raw: RawSearchResult[]): NormalizedResult[];
   healthCheck(): Promise<boolean>;

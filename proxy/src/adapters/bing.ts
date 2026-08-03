@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { asConfidence, asRecord, asString, fetchJson, result, safeUrl } from "./base.js";
-import type { EngineCapability, IImageSearchAdapter, NormalizedResult, RawSearchResult } from "../types.js";
+import type { EngineCapability, IImageSearchAdapter, NormalizedResult, RawSearchResult } from "./base.js";
 
 function collectActions(value: unknown, output: RawSearchResult[] = []): RawSearchResult[] {
   if (Array.isArray(value)) {
@@ -26,6 +26,10 @@ export class BingVisualAdapter implements IImageSearchAdapter {
     integrationType: "official_api",
   };
 
+  async warmup(): Promise<void> {}
+  async initialize(): Promise<void> {}
+  async cleanup(): Promise<void> {}
+
   async execute(imageUrl: string): Promise<RawSearchResult[]> {
     if (!config.bingApiKey) throw new Error("Bing Visual Search adapter is not configured");
     const payload = await fetchJson(config.bingEndpoint, {
@@ -36,7 +40,7 @@ export class BingVisualAdapter implements IImageSearchAdapter {
         "Ocp-Apim-Subscription-Key": config.bingApiKey,
       },
       body: JSON.stringify({ imageInfo: { url: imageUrl } }),
-    }, AbortSignal.timeout(15_000));
+    }, AbortSignal.timeout(config.adapterTimeoutMs));
     return collectActions(payload);
   }
 

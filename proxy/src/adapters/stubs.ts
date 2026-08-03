@@ -1,4 +1,5 @@
-import { AdapterNotImplementedError, type EngineCapability, type IImageSearchAdapter, type NormalizedResult, type RawSearchResult } from "../types.js";
+import { AdapterNotImplementedError } from "../types.js";
+import type { EngineCapability, IImageSearchAdapter, NormalizedResult, RawSearchResult } from "./base.js";
 
 export class UnavailableAdapter implements IImageSearchAdapter {
   constructor(
@@ -7,6 +8,10 @@ export class UnavailableAdapter implements IImageSearchAdapter {
     public readonly capabilities: EngineCapability,
     private readonly reason: string,
   ) {}
+
+  async warmup(): Promise<void> {}
+  async initialize(): Promise<void> {}
+  async cleanup(): Promise<void> {}
 
   async execute(_imageUrl: string): Promise<RawSearchResult[]> {
     throw new AdapterNotImplementedError(this.reason);

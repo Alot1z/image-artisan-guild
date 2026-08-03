@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { asConfidence, asRecord, asString, fetchJson, result, safeUrl } from "./base.js";
-import type { EngineCapability, IImageSearchAdapter, NormalizedResult, RawSearchResult } from "../types.js";
+import type { EngineCapability, IImageSearchAdapter, NormalizedResult, RawSearchResult } from "./base.js";
 
 export class SauceNaoAdapter implements IImageSearchAdapter {
   readonly id = "saucenao";
@@ -12,6 +12,10 @@ export class SauceNaoAdapter implements IImageSearchAdapter {
     integrationType: "official_api",
   };
 
+  async warmup(): Promise<void> {}
+  async initialize(): Promise<void> {}
+  async cleanup(): Promise<void> {}
+
   async execute(imageUrl: string): Promise<RawSearchResult[]> {
     if (!config.sauceNaoApiKey) throw new Error("SauceNAO adapter is not configured");
     const params = new URLSearchParams({
@@ -20,7 +24,7 @@ export class SauceNaoAdapter implements IImageSearchAdapter {
       numres: "30",
       url: imageUrl,
     });
-    const payload = await fetchJson(`https://saucenao.com/search.php?${params}`, { method: "GET" }, AbortSignal.timeout(15_000));
+    const payload = await fetchJson(`https://saucenao.com/search.php?${params}`, { method: "GET" }, AbortSignal.timeout(config.adapterTimeoutMs));
     const record = asRecord(payload);
     if (!record || !Array.isArray(record.results)) throw new Error("SauceNAO returned an invalid response");
     return record.results.filter((item): item is RawSearchResult => Boolean(asRecord(item)));

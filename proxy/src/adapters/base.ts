@@ -1,4 +1,53 @@
-import { HttpStatusError, type NormalizedResult, type RawSearchResult } from "../types.js";
+import { HttpStatusError } from "../types.js";
+
+export type IntegrationType =
+  | "official_api"
+  | "partner_api"
+  | "playwright"
+  | "experimental"
+  | "unavailable";
+
+export interface EngineCapability {
+  supportsImageUpload: boolean;
+  supportsUrlInput: boolean;
+  requiresAuth: boolean;
+  integrationType: IntegrationType;
+}
+
+export interface RawSearchResult {
+  [key: string]: unknown;
+}
+
+export interface NormalizedResult {
+  source_engine: string;
+  url: string;
+  thumbnail?: string;
+  confidence: number;
+  metadata: Record<string, string>;
+}
+
+export interface AdapterHealth {
+  healthy: boolean;
+  checkedAt: number;
+  consecutiveFailures: number;
+  latencyMs?: number;
+  error?: string;
+}
+
+export interface AdapterLifecycle {
+  warmup(): Promise<void>;
+  initialize(): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
+export interface IImageSearchAdapter extends AdapterLifecycle {
+  readonly id: string;
+  readonly name: string;
+  readonly capabilities: EngineCapability;
+  execute(imageUrl: string): Promise<RawSearchResult[]>;
+  normalize(raw: RawSearchResult[]): NormalizedResult[];
+  healthCheck(): Promise<boolean>;
+}
 
 export async function fetchJson(
   url: string,

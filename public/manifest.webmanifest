@@ -1,17 +1,65 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
-  "start_url": "/",
+  "name": "The Image Inquisitor",
+  "short_name": "Inquisitor",
+  "description": "A vintage reverse image engineering archive you can carry in your pocket.",
+  "id": "/",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "orientation": "portrait",
+  "background_color": "#e8d8b6",
+  "theme_color": "#a57a4a",
+  "categories": ["utilities", "productivity", "photo"],
+  "lang": "en",
+  "dir": "ltr",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/logo.svg",
       "sizes": "any",
-      "type": "image/png",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Workbench",
+      "short_name": "Workbench",
+      "description": "Begin a new image inquiry",
+      "url": "/dashboard?action=camera",
+      "icons": [{ "src": "/logo.svg", "sizes": "any" }]
+    },
+    {
+      "name": "View Portfolio",
+      "short_name": "Portfolio",
+      "description": "Open your archived inquiries",
+      "url": "/dashboard?view=history",
+      "icons": [{ "src": "/logo.svg", "sizes": "any" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/logo.svg",
+      "sizes": "1170x2532",
+      "type": "image/svg+xml",
+      "form_factor": "narrow"
     }
   ]
 }

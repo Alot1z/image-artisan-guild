@@ -1,5 +1,4 @@
-/* DO NOT CHANGE */
-@import "tailwindcss";
+/* DO NOT CHANGE */\n@import "tailwindcss";
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 
@@ -42,74 +41,101 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* CHANGE VALUES FOR THEME */
+/* CHANGE VALUES FOR THEME — Vintage Sepia / Aged Paper */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.375rem;
+
+  /* Aged paper & ink palette */
+  --background: oklch(0.93 0.02 75);            /* warm paper */
+  --foreground: oklch(0.22 0.04 50);            /* deep walnut ink */
+  --card: oklch(0.95 0.018 78);                 /* lighter cardstock */
+  --card-foreground: oklch(0.22 0.04 50);
+  --popover: oklch(0.95 0.018 78);
+  --popover-foreground: oklch(0.22 0.04 50);
+
+  --primary: oklch(0.34 0.06 45);               /* oxblood / sepia ink */
+  --primary-foreground: oklch(0.96 0.015 80);   /* cream */
+  --secondary: oklch(0.86 0.03 70);             /* faded parchment */
+  --secondary-foreground: oklch(0.22 0.04 50);
+  --muted: oklch(0.88 0.025 72);                /* muted parchment */
+  --muted-foreground: oklch(0.42 0.04 55);      /* faded ink */
+
+  --accent: oklch(0.74 0.08 65);                /* gilded brass */
+  --accent-foreground: oklch(0.22 0.04 50);
+  --destructive: oklch(0.5 0.15 25);            /* faded vermilion */
+
+  --border: oklch(0.72 0.04 60 / 55%);          /* weathered edge */
+  --input: oklch(0.85 0.03 70);
+  --ring: oklch(0.34 0.06 45 / 45%);
+
+  --chart-1: oklch(0.45 0.08 45);
+  --chart-2: oklch(0.6 0.08 75);
+  --chart-3: oklch(0.74 0.08 65);
+  --chart-4: oklch(0.5 0.1 30);
+  --chart-5: oklch(0.7 0.06 90);
+
+  --sidebar: oklch(0.91 0.025 75);
+  --sidebar-foreground: oklch(0.22 0.04 50);
+  --sidebar-primary: oklch(0.34 0.06 45);
+  --sidebar-primary-foreground: oklch(0.96 0.015 80);
+  --sidebar-accent: oklch(0.86 0.03 70);
+  --sidebar-accent-foreground: oklch(0.22 0.04 50);
+  --sidebar-border: oklch(0.72 0.04 60 / 55%);
+  --sidebar-ring: oklch(0.34 0.06 45 / 45%);
+
+  /* Custom vintage tokens */
+  --paper-tint: oklch(0.94 0.022 78);
+  --paper-deep: oklch(0.88 0.035 70);
+  --ink: oklch(0.2 0.045 45);
+  --ink-soft: oklch(0.42 0.05 55);
+  --ink-fade: oklch(0.62 0.05 60);
+  --seal: oklch(0.36 0.12 25);
+  --brass: oklch(0.74 0.08 65);
+  --brass-deep: oklch(0.6 0.08 60);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Evening sepia variant (still archival — late lamplight) */
+  --background: oklch(0.18 0.02 50);
+  --foreground: oklch(0.92 0.02 75);
+  --card: oklch(0.24 0.025 55);
+  --card-foreground: oklch(0.92 0.02 75);
+  --popover: oklch(0.24 0.025 55);
+  --popover-foreground: oklch(0.92 0.02 75);
+  --primary: oklch(0.74 0.08 65);
+  --primary-foreground: oklch(0.18 0.02 50);
+  --secondary: oklch(0.3 0.025 55);
+  --secondary-foreground: oklch(0.92 0.02 75);
+  --muted: oklch(0.3 0.025 55);
+  --muted-foreground: oklch(0.7 0.03 70);
+  --accent: oklch(0.6 0.08 60);
+  --accent-foreground: oklch(0.92 0.02 75);
+  --destructive: oklch(0.55 0.16 25);
+  --border: oklch(0.6 0.04 60 / 30%);
+  --input: oklch(0.32 0.025 55);
+  --ring: oklch(0.74 0.08 65 / 50%);
+  --chart-1: oklch(0.74 0.08 65);
+  --chart-2: oklch(0.6 0.08 75);
+  --chart-3: oklch(0.5 0.08 45);
+  --chart-4: oklch(0.65 0.1 30);
+  --chart-5: oklch(0.7 0.06 90);
+  --sidebar: oklch(0.22 0.022 55);
+  --sidebar-foreground: oklch(0.92 0.02 75);
+  --sidebar-primary: oklch(0.74 0.08 65);
+  --sidebar-primary-foreground: oklch(0.18 0.02 50);
+  --sidebar-accent: oklch(0.3 0.025 55);
+  --sidebar-accent-foreground: oklch(0.92 0.02 75);
+  --sidebar-border: oklch(0.6 0.04 60 / 30%);
+  --sidebar-ring: oklch(0.74 0.08 65 / 50%);
+
+  --paper-tint: oklch(0.2 0.025 55);
+  --paper-deep: oklch(0.24 0.025 55);
+  --ink: oklch(0.9 0.02 75);
+  --ink-soft: oklch(0.7 0.03 70);
+  --ink-fade: oklch(0.55 0.04 65);
+  --seal: oklch(0.55 0.16 25);
+  --brass: oklch(0.74 0.08 65);
+  --brass-deep: oklch(0.6 0.08 60);
 }
 
 @layer base {
@@ -117,10 +143,240 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-serif antialiased;
+    background-image:
+      radial-gradient(ellipse at top, color-mix(in oklab, var(--paper-tint) 80%, transparent), transparent 60%),
+      radial-gradient(ellipse at bottom right, color-mix(in oklab, var(--paper-deep) 60%, transparent), transparent 55%);
   }
   button:not([disabled]),
   [role="button"]:not([disabled]) {
     cursor: pointer;
   }
 }
+
+/* Typography stack — elegant serif hierarchy */
+@layer base {
+  :root {
+    --font-display: "Cormorant Garamond", "EB Garamond", "Garamond", "Times New Roman", serif;
+    --font-body: "EB Garamond", "Garamond", "Times New Roman", serif;
+    --font-script: "IM Fell English", "Caveat", "Apple Chancery", cursive;
+    --font-mono: "JetBrains Mono", "Courier New", monospace;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+    font-feature-settings: "liga", "dlig", "swsh";
+    letter-spacing: -0.005em;
+  }
+  .font-script {
+    font-family: var(--font-script);
+    font-style: italic;
+  }
+  .font-body-serif {
+    font-family: var(--font-body);
+  }
+}
+
+/* Subtle paper noise & distressing overlay — uses SVG noise */
+.paper-grain {
+  position: relative;
+  isolation: isolate;
+}
+.paper-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.2 0 0 0 0 0.08 0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.35'/></svg>");
+  opacity: 0.18;
+  mix-blend-mode: multiply;
+}
+.paper-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle at 20% 12%, color-mix(in oklab, var(--ink) 12%, transparent) 0, transparent 22%),
+    radial-gradient(circle at 80% 88%, color-mix(in oklab, var(--ink) 10%, transparent) 0, transparent 18%),
+    radial-gradient(circle at 12% 78%, color-mix(in oklab, var(--ink) 8%, transparent) 0, transparent 14%);
+}
+
+/* Aged edge / deckle */
+.archival-border {
+  border: 1px solid color-mix(in oklab, var(--ink) 40%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--paper-tint) 60%, transparent),
+    inset 0 0 24px color-mix(in oklab, var(--ink) 12%, transparent),
+    0 2px 0 color-mix(in oklab, var(--ink) 8%, transparent);
+  background:
+    radial-gradient(ellipse at center, transparent 65%, color-mix(in oklab, var(--ink) 8%, transparent) 100%),
+    var(--card);
+}
+
+.ink-rule {
+  background-image: linear-gradient(to right, transparent 0%, color-mix(in oklab, var(--ink) 50%, transparent) 18%, color-mix(in oklab, var(--ink) 70%, transparent) 50%, color-mix(in oklab, var(--ink) 50%, transparent) 82%, transparent 100%);
+}
+
+.filigree::before,
+.filigree::after {
+  content: "❦";
+  color: color-mix(in oklab, var(--brass-deep) 80%, transparent);
+  font-size: 1.1em;
+  margin: 0 0.5em;
+  vertical-align: middle;
+}
+
+/* Wax seal stamp animation */
+@keyframes stamp-in {
+  0%   { transform: scale(1.6) rotate(-8deg); opacity: 0; }
+  60%  { transform: scale(0.95) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-3deg); opacity: 1; }
+}
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, color-mix(in oklab, var(--seal) 80%, var(--brass) 20%), var(--seal) 70%);
+  color: color-mix(in oklab, var(--paper-tint) 92%, transparent);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  border: 1.5px solid color-mix(in oklab, var(--ink) 35%, transparent);
+  box-shadow:
+    inset 1px 1px 6px color-mix(in oklab, var(--ink) 35%, transparent),
+    inset -1px -1px 4px color-mix(in oklab, var(--brass) 35%, transparent),
+    0 1px 0 color-mix(in oklab, var(--ink) 25%, transparent);
+  animation: stamp-in 0.6s ease-out both;
+}
+
+/* Marginalia — text annotation styles */
+.marginalia {
+  font-family: var(--font-script);
+  color: color-mix(in oklab, var(--seal) 80%, var(--ink) 20%);
+  font-style: italic;
+}
+
+.eyebrow {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 0.78rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+}
+
+.drop-cap::first-letter {
+  font-family: var(--font-display);
+  font-size: 3em;
+  float: left;
+  line-height: 0.9;
+  padding: 0.18em 0.16em 0 0;
+  color: color-mix(in oklab, var(--seal) 65%, var(--ink) 35%);
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* Tiny floating dust motes */
+@keyframes motes {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.4; }
+  50%      { transform: translateY(-12px) translateX(6px); opacity: 0.85; }
+}
+.dust {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--brass) 70%, transparent);
+  filter: blur(0.4px);
+  animation: motes 7s ease-in-out infinite;
+}
+
+/* Paper card with deckled inset */
+.archive-card {
+  position: relative;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--paper-tint) 92%, transparent), color-mix(in oklab, var(--paper-deep) 70%, transparent));
+  border: 1px solid color-mix(in oklab, var(--ink) 30%, transparent);
+  border-radius: 0.4rem;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--paper-tint) 50%, transparent),
+    inset 0 0 28px color-mix(in oklab, var(--ink) 10%, transparent),
+    0 1px 0 color-mix(in oklab, var(--ink) 10%, transparent),
+    0 6px 14px -10px color-mix(in oklab, var(--ink) 30%, transparent);
+}
+
+/* Plate / catalogue tag */
+.catalogue-tag {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+  border: 1px solid color-mix(in oklab, var(--ink) 30%, transparent);
+  padding: 0.18rem 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--paper-tint) 60%, transparent);
+}
+
+/* Numbered ribbon */
+.ribbon-num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  background: color-mix(in oklab, var(--seal) 70%, var(--ink) 30%);
+  color: color-mix(in oklab, var(--paper-tint) 92%, transparent);
+  padding: 0.18rem 0.5rem 0.15rem;
+  border-radius: 0.2rem;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+/* Hover shimmer for cards / plates */
+.plate-hover {
+  transition: transform 220ms ease, box-shadow 240ms ease, border-color 240ms ease;
+}
+.plate-hover:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--brass-deep) 80%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--paper-tint) 50%, transparent),
+    inset 0 0 32px color-mix(in oklab, var(--ink) 14%, transparent),
+    0 18px 32px -22px color-mix(in oklab, var(--ink) 50%, transparent);
+}
+
+/* Vintage scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: color-mix(in oklab, var(--paper-deep) 70%, transparent); }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--ink) 45%, transparent);
+  border-radius: 9999px;
+  border: 2px solid color-mix(in oklab, var(--paper-deep) 70%, transparent);
+}
+::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--ink) 70%, transparent); }
+
+/* Hand-drawn underline */
+.hand-underline {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 6' preserveAspectRatio='none'><path d='M2 4 C 30 1, 60 6, 118 3' stroke='%237a4d2e' stroke-width='1.2' fill='none' stroke-linecap='round'/></svg>");
+  background-size: 100% 6px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  padding-bottom: 4px;
+}
+
+/* Subtle wobble for buttons */
+@keyframes ticker {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1px); }
+}
+.ticker-pulse { animation: ticker 2.4s ease-in-out infinite; }
+
+/* Ensure inputs share the font */
+input, textarea, select, button { font-family: inherit; }

@@ -39,6 +39,27 @@ import type {
 } from "@/lib/proxyTypes";
 import logo from "@/assets/logo.svg";
 
+/** Merge retry results into the existing ledger: dedupe by source URL,
+ *  keep the higher score, and union the provenance (services) lists. */
+function mergeAggregateResults(prev: AggregateResult[], next: AggregateResult[]): AggregateResult[] {
+  const byUrl = new Map<string, AggregateResult>();
+  for (const item of [...prev, ...next]) {
+    const key = item.sourceUrl.trim().toLowerCase();
+    const existing = byUrl.get(key);
+    if (!existing) {
+      byUrl.set(key, item);
+      continue;
+    }
+    const better = (item.score ?? 0) >= (existing.score ?? 0) ? item : existing;
+    byUrl.set(key, {
+      ...better,
+      score: Math.max(existing.score ?? 0, item.score ?? 0),
+      services: [...new Set([...(existing.services ?? []), ...(item.services ?? [])])],
+    });
+  }
+  return [...byUrl.values()];
+}
+
 export default function Inquisitor() {
   const store = useInquiryStore();
   const [params] = useSearchParams();
@@ -277,6 +298,76 @@ export default function Inquisitor() {
     });
   }, [aggregateSearch, store, uploader, prompt]);
 
+  /** Re-run only the engines that failed, merging any new matches into the
+   *  existing ledger so successful results are never cleared or duplicated. */
+  const retryFailedEngines = useCallback(async (engineIds: string[]) => {
+    const asset = store.assets.find((a) => a.id === store.activeId) ?? null;
+    if (!asset || engineIds.length === 0) return;
+    setPhase("searching");
+    setFailureNotice(null);
+    let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
+    if (!hosted) {
+      try {
+        const dataUrl = await blobToDataUrl(asset.blob);
+        hosted = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
+        store.setHostedUrl(asset.id, hosted);
+      } catch {
+        setPhase("complete");
+        setFailureNotice("The plate could not be hosted — the external proxy needs a publicly reachable image URL before it can search.");
+        toast({ title: "Retry unavailable", description: "The plate could not be hosted for the external proxy.", variant: "destructive" });
+        return;
+      }
+    }
+    let response: AggregateDispatchResult;
+    try {
+      response = await aggregateSearch({ imageUrl: hosted, engineIds });
+    } catch (error) {
+      console.error("[inquisitor] retry call failed", error);
+      setPhase("complete");
+      setFailureNotice("Search service temporarily unavailable.");
+      toast({ title: "Retry unavailable", description: "Search service temporarily unavailable.", variant: "destructive" });
+      return;
+    }
+    setPhase("processing");
+    if (!response.ok) {
+      const description = response.error === "missing-config"
+        ? "Add RIS_PROXY_URL and RIS_PROXY_KEY in the Keys tab to enable the external search proxy."
+        : response.error === "auth-failed"
+          ? "The search service could not verify this inquiry. Please try again shortly."
+          : response.error === "rate-limited"
+            ? "The proxy is rate-limiting this inquiry. Wait a moment and retry."
+            : response.error === "invalid-response"
+              ? "The proxy returned an unexpected response."
+              : "Search service temporarily unavailable.";
+      if (response.error === "auth-failed" || response.error === "proxy-error") {
+        // Logged securely (kind + status only) — never echo credentials.
+        console.error("[inquisitor] retry failed", { kind: response.error, status: response.status });
+      }
+      setPhase("complete");
+      setFailureNotice(description);
+      toast({ title: "Retry unavailable", description, variant: "destructive" });
+      return;
+    }
+    // Merge the new matches into the existing ledger (dedupe by source URL)
+    // and drop the retried engines from the failure list.
+    setAggregateResults((prev) => mergeAggregateResults(prev, response.results));
+    setAggregateErrors((prev) => {
+      const retried = new Set(engineIds);
+      const remaining = prev.filter((err) => !retried.has(err.engine_id));
+      for (const err of response.errors) {
+        if (!remaining.some((e) => e.engine_id === err.engine_id)) remaining.push(err);
+      }
+      return remaining;
+    });
+    setPhase("complete");
+    toast({
+      title: "Retry complete",
+      description: response.results.length > 0
+        ? `${response.results.length} new match${response.results.length === 1 ? "" : "es"} merged into the ledger.`
+        : "No additional matches were returned by the retried engines.",
+    });
+  }, [aggregateSearch, store, uploader]);
+
   const handleCropped = useCallback((assetId: string, croppedBlob: Blob) => {
     const source = store.assets.find((item) => item.id === assetId);
     if (!source) return;
@@ -421,6 +512,7 @@ export default function Inquisitor() {
                   }
                 }}
                 onDispatchSelected={(ids) => { if (active) void ensureHostThenDispatch(active, ids); }}
+                onRetryEngines={(ids) => { void retryFailedEngines(ids); }}
                 prompt={prompt}
                 onPromptChange={setPrompt}
                 notes={active?.notes ?? ""}

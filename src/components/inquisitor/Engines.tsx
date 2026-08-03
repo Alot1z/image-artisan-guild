@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   ENGINES, TIER_TITLES, TIER_DESCRIPTIONS,
   REGION_TITLES, AVAILABILITY_TITLES, FEATURE_TITLES,
+  engineById,
   type Engine, type Tier, type Region,
 } from "@/lib/engines";
 import type { GeoPoint } from "@/lib/exif";
@@ -39,6 +40,8 @@ interface Props {
   onUploadRequest: (id: string) => Promise<void>;
   onDispatchAll: () => void;
   onDispatchSelected: (engines: string[]) => void;
+  /** Re-run only the given engines; results merge into the existing ledger. */
+  onRetryEngines?: (engineIds: string[]) => void;
   prompt: string;
   onPromptChange: (value: string) => void;
   notes: string;
@@ -57,10 +60,89 @@ interface Props {
 
 const FEATURE_LABEL = FEATURE_TITLES;
 
+/** The working phases shown in order while a search is in flight. */
+const WORKING_PHASES: Array<{ phase: SearchPhase; label: string }> = [
+  { phase: "uploading", label: "Hosting plate" },
+  { phase: "searching", label: "Searching catalogues" },
+  { phase: "processing", label: "Collating results" },
+];
+
+/** Compact confidence bar for a ranked match (score is 0..1 from the proxy). */
+function ScoreMeter({ score }: { score: number }) {
+  const pct = Math.round(Math.max(0, Math.min(1, score)) * 100);
+  const barColor =
+    pct >= 80
+      ? "bg-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]"
+      : pct >= 50
+        ? "bg-[color-mix(in_oklab,var(--brass)_75%,var(--ink)_25%)]"
+        : "bg-[color-mix(in_oklab,var(--ink)_50%,transparent)]";
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`Match confidence ${pct}%`}>
+      <span className="h-1.5 w-14 overflow-hidden rounded-full bg-[color-mix(in_oklab,var(--ink)_20%,transparent)]">
+        <span className={cn("block h-full rounded-full", barColor)} style={{ width: `${pct}%` }} />
+      </span>
+      <span className="font-body-serif text-[0.62rem] italic text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">{pct}%</span>
+    </span>
+  );
+}
+
+/** Provenance badge for a result — real provider name + live/planned status. */
+function EngineSourceBadge({ id, status }: { id: string; status?: EngineStatus }) {
+  const engine = engineById(id);
+  const active = status === "active";
+  const name = engine?.name ?? id;
+  return (
+    <span
+      title={`${name}${active ? " · live adapter" : " · planned adapter"}`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[0.55rem] font-display uppercase tracking-wider",
+        active
+          ? "border-[color-mix(in_oklab,var(--seal)_55%,transparent)] text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)]"
+          : "border-[color-mix(in_oklab,var(--ink)_22%,transparent)] text-[color-mix(in_oklab,var(--ink)_55%,transparent)]",
+      )}
+    >
+      {active ? <CircleDot className="h-2.5 w-2.5" /> : <CircleDashed className="h-2.5 w-2.5" />}
+      {name}
+    </span>
+  );
+}
+
+/** Step indicator for the existing search phase machine (no state changes). */
+function PhaseSteps({ phase }: { phase: SearchPhase }) {
+  const activeIndex = WORKING_PHASES.findIndex((step) => step.phase === phase);
+  if (activeIndex === -1) return null;
+  return (
+    <ol className="flex items-center gap-2">
+      {WORKING_PHASES.map((step, index) => {
+        const done = index < activeIndex;
+        const active = index === activeIndex;
+        return (
+          <li key={step.phase} className="flex items-center gap-2">
+            {index > 0 && <span className="h-px w-2.5 bg-[color-mix(in_oklab,var(--ink)_30%,transparent)]" />}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 text-[0.62rem] font-display italic uppercase tracking-wider",
+                active
+                  ? "text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)]"
+                  : done
+                    ? "text-[color-mix(in_oklab,var(--ink)_55%,transparent)]"
+                    : "text-[color-mix(in_oklab,var(--ink)_35%,transparent)]",
+              )}
+            >
+              {done ? <CheckSquare className="h-3 w-3" /> : active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
+              {step.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function Engines({
   assets, activeId, hostedUrls, uploading,
   onEnginesChange, onHostedUrlReceived, onUploadRequest,
-  onDispatchAll, onDispatchSelected,
+  onDispatchAll, onDispatchSelected, onRetryEngines,
   prompt, onPromptChange, notes, onNotesChange,
   autoTickRegional, onAutoTickRegionalChange,
   aggregateResults, aggregateBusy, aggregatePhase, aggregateErrors,
@@ -456,17 +538,15 @@ export function Engines({
       {/* Ranked proxy results */}
       {active && (aggregateBusy || aggregateResults.length > 0 || aggregateErrors.length > 0 || failureNotice) && (
         <div className="border-t border-[color-mix(in_oklab,var(--ink)_25%,transparent)] px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <p className="eyebrow">The Proxy Ledger</p>
-              <p className="font-display text-lg italic">Ranked matches from the external search contract.</p>
+              {aggregateResults.length > 0 && !aggregateBusy && (
+                <span className="ribbon-num" title="Ranked matches returned">{aggregateResults.length}</span>
+              )}
             </div>
-            {aggregateBusy && (
-              <span className="flex items-center gap-2 text-[0.68rem] font-display italic uppercase tracking-wider text-[color-mix(in_oklab,var(--ink)_65%,transparent)]">
-                {aggregatePhase === "uploading" ? "Hosting plate" : aggregatePhase === "searching" ? "Searching catalogues" : "Collating results"}
-                <Loader2 className="h-4 w-4 animate-spin text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />
-              </span>
-            )}
+            <p className="font-display text-lg italic">Ranked matches from the external search contract.</p>
+            {aggregateBusy && <PhaseSteps phase={aggregatePhase} />}
           </div>
 
           {failureNotice && (
@@ -478,17 +558,41 @@ export function Engines({
 
           {aggregateErrors.length > 0 && (
             <div className="mt-3">
-              <p className="eyebrow mb-1.5">Engines that failed this inquiry</p>
-              <div className="flex flex-wrap gap-1.5">
-                {aggregateErrors.map((err) => (
-                  <span
-                    key={err.engine_id}
-                    title={err.error}
-                    className="rounded-full border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--seal)_12%,transparent)] px-2 py-0.5 text-[0.62rem] font-display italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]"
-                  >
-                    {err.engine_id} · failed
-                  </span>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="eyebrow mb-1.5">Engines that failed this inquiry</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={aggregateBusy}
+                  onClick={() => onRetryEngines?.(aggregateErrors.map((e) => e.engine_id))}
+                  className="h-6 gap-1 rounded-full px-2 text-[0.62rem] font-display italic text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)] disabled:opacity-40"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Retry all failed
+                </Button>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {aggregateErrors.map((err) => {
+                  const engineName = engineById(err.engine_id)?.name ?? err.engine_id;
+                  return (
+                    <span
+                      key={err.engine_id}
+                      title={err.error}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--seal)_12%,transparent)] px-2 py-0.5 text-[0.62rem] font-display italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]"
+                    >
+                      {engineName} · failed
+                      <button
+                        type="button"
+                        disabled={aggregateBusy}
+                        onClick={() => onRetryEngines?.([err.engine_id])}
+                        className="rounded-full px-1 text-[0.6rem] uppercase tracking-wider text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)] disabled:opacity-40"
+                        title={`Retry ${engineName}`}
+                      >
+                        retry
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -497,34 +601,50 @@ export function Engines({
             <p className="mt-3 font-body-serif text-sm italic text-[color-mix(in_oklab,var(--ink)_70%,transparent)]">No matching folios were returned.</p>
           )}
           {aggregateResults.length > 0 && (
-            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-              {aggregateResults.map((match) => (
-                <a
-                  key={match.id}
-                  href={match.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="plate-hover group flex gap-3 rounded-md border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_60%,transparent)] p-2.5 transition"
-                >
-                  {match.thumbnailUrl ? (
-                    <img src={match.thumbnailUrl} alt="" className="h-14 w-14 shrink-0 rounded-sm object-cover" loading="lazy" />
-                  ) : (
-                    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_oklab,var(--brass)_30%,transparent)] font-display text-xs">№</span>
-                  )}
-                  <span className="min-w-0 leading-tight">
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate font-display text-sm font-semibold group-hover:underline">{match.title}</span>
-                      <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
+            <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+              {aggregateResults.map((match, index) => {
+                const engineIds = match.services?.length ? match.services : [];
+                const domain = (() => {
+                  try { return new URL(match.sourceUrl).hostname.replace(/^www\./, ""); } catch { return undefined; }
+                })();
+                const dimensions = match.width && match.height ? `${match.width} × ${match.height}` : undefined;
+                return (
+                  <a
+                    key={match.id}
+                    href={match.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="plate-hover group relative flex gap-3 rounded-md border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_60%,transparent)] p-2.5 transition"
+                  >
+                    <span className="ribbon-num absolute -left-2 -top-2" title={`Ranked #${index + 1}`}>{index + 1}</span>
+                    {match.thumbnailUrl ? (
+                      <img src={match.thumbnailUrl} alt="" className="h-16 w-16 shrink-0 rounded-sm object-cover" loading="lazy" />
+                    ) : (
+                      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_oklab,var(--brass)_30%,transparent)] font-display text-xs">№</span>
+                    )}
+                    <span className="min-w-0 flex-1 leading-tight">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate font-display text-sm font-semibold group-hover:underline">{match.title}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
+                      </span>
+                      <span className="mt-1 block truncate font-mono text-[0.62rem] text-[color-mix(in_oklab,var(--ink)_60%,transparent)]">{match.sourceUrl}</span>
+                      <span className="mt-1.5 flex flex-wrap items-center gap-2">
+                        {typeof match.score === "number"
+                          ? <ScoreMeter score={match.score} />
+                          : <span className="catalogue-tag" title="No confidence score reported by the proxy">unscored</span>}
+                        {match.matchType && <span className="catalogue-tag">{match.matchType}</span>}
+                        {dimensions && <span className="catalogue-tag">{dimensions}</span>}
+                      </span>
+                      {(engineIds.length > 0 || domain) && (
+                        <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                          {domain && <span className="catalogue-tag">{domain}</span>}
+                          {engineIds.map((id) => <EngineSourceBadge key={id} id={id} status={manifestStatus[id]} />)}
+                        </span>
+                      )}
                     </span>
-                    <span className="mt-1 block truncate font-mono text-[0.62rem] text-[color-mix(in_oklab,var(--ink)_60%,transparent)]">{match.sourceUrl}</span>
-                    <span className="mt-1 flex flex-wrap gap-1.5 text-[0.62rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_65%,transparent)]">
-                      {typeof match.score === "number" && <span className="catalogue-tag">score {Math.round(match.score * 100)}%</span>}
-                      {match.matchType && <span className="catalogue-tag">{match.matchType}</span>}
-                      {match.services && <span className="catalogue-tag">{match.services.length} services</span>}
-                    </span>
-                  </span>
-                </a>
-              ))}
+                  </a>
+                );
+              })}
             </div>
           )}
         </div>

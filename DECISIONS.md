@@ -184,3 +184,36 @@ ROADMAP as an open question.
 
 **Evidence**: `src/components/RequireAuth.tsx` (defined), `src/main.tsx`
 (routes without the wrapper), `src/pages/Dashboard.tsx` (unreferenced).
+
+---
+
+## 2026-08-03 | Phase 7: Search UX Refinement
+
+**Decision**: Frontend-only refinement of the proxy result presentation in
+`src/components/inquisitor/Engines.tsx` and `src/pages/Inquisitor.tsx`:
+enriched result cards (rank, source-engine badges with real provider names
+via `engineById`, confidence meter, domain/dimensions metadata), a
+phase-stepper loading indicator bound to the existing `SearchPhase` machine,
+and a per-engine retry flow (`onRetryEngines` → `retryFailedEngines`) that
+re-dispatches only failed engine ids and merges new matches into the existing
+ledger by source-URL dedupe.
+
+**Reason**: Successful/partial-failure/loading/completion states were hard to
+read; failed engines had no recovery path. The proxy response contract, the
+Convex action, and the `SearchPhase` machine are unchanged.
+
+**Alternatives considered**: (a) Re-run the full `ensureHostThenDispatch` on
+retry — rejected because it clears the ledger and would duplicate successful
+results; (b) a generic reusable result-framework component — rejected per the
+no-premature-abstraction rule (helpers stay local to Engines.tsx);
+(c) moving confidence/ranking computation to the proxy — rejected (backend
+out of scope).
+
+**Impact**: Two files modified (`Engines.tsx`, `Inquisitor.tsx`); no new
+dependencies, no CSS/token changes, no contract or schema changes. Verified:
+`bun tsc -b --noEmit` exit 0; proxy suite 33 pass / 0 fail. No measured
+performance regression (all work is render-time; retry adds one bounded
+`aggregateSearch` call per failed batch). Structural change: new optional
+`onRetryEngines` prop on `Engines`, module-local `mergeAggregateResults`
+helper, and three local presentational components (`ScoreMeter`,
+`EngineSourceBadge`, `PhaseSteps`).

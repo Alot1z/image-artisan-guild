@@ -10,7 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/index.js",
-    "test": "bun test tests"
+    "test": "RIS_PROXY_KEY=test-secret SAUCENAO_API_KEY=test-saucenao-key BING_VISUAL_SEARCH_API_KEY=test-bing-key bun test tests"
   },
   "dependencies": {
     "express": "^5.1.0",

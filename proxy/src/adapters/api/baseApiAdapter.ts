@@ -18,16 +18,25 @@ export abstract class BaseApiAdapter implements IImageSearchAdapter {
   abstract readonly name: string;
   abstract readonly capabilities: EngineCapability;
 
-  protected readonly fetchImpl: typeof fetch;
+  private readonly fetchOverride: typeof fetch | undefined;
   protected readonly requestTimeoutMs: number;
   protected readonly maxRetries: number;
   protected readonly retryDelayMs: number;
 
   constructor(options: ApiAdapterOptions = {}) {
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchOverride = options.fetchImpl;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
     this.maxRetries = options.maxRetries ?? 0;
     this.retryDelayMs = options.retryDelayMs ?? 100;
+  }
+
+  /**
+   * Resolved at call time (not captured at construction) so that
+   * late-installed fetch mocks or runtime fetch patching are honored
+   * regardless of adapter construction order.
+   */
+  protected get fetchImpl(): typeof fetch {
+    return this.fetchOverride ?? globalThis.fetch;
   }
 
   async warmup(): Promise<void> {}

@@ -63,6 +63,53 @@ export async function downscale(blob: Blob, maxDim = 1600, quality = 0.86): Prom
   });
 }
 
+export interface CompressOptions {
+  /** Longest-edge target in px (default 1600). */
+  maxDim?: number;
+  /** Blobs at or below this byte size are returned untouched (default 1.5 MB). */
+  maxBytes?: number;
+  /** JPEG quality for re-encoded payloads (default 0.86). */
+  quality?: number;
+}
+
+/**
+ * Prepare a blob for the OUTBOUND upload payload only.
+ *
+ * - Small files (size + dimensions within limits) are returned as-is, so
+ *   EXIF/GPS metadata is never stripped from the local analysis path.
+ * - Large files are downscaled/re-encoded via `downscale`.
+ * - Undecodable blobs (e.g. PDFs) fall back to the original untouched —
+ *   compression must never break the hosting flow.
+ *
+ * This never mutates the stored asset; callers must swap it in at the
+ * dispatch/host stage only.
+ */
+export async function compressForUpload(blob: Blob, options: CompressOptions = {}): Promise<Blob> {
+  const maxDim = options.maxDim ?? 1600;
+  const maxBytes = options.maxBytes ?? 1_500_000;
+  const quality = options.quality ?? 0.86;
+
+  if (blob.size <= maxBytes) {
+    let w = 0;
+    let h = 0;
+    try {
+      const bitmap = await createImageBitmap(blob);
+      w = bitmap.width;
+      h = bitmap.height;
+      bitmap.close();
+    } catch {
+      return blob;
+    }
+    if (Math.max(w, h) <= maxDim) return blob;
+  }
+
+  try {
+    return await downscale(blob, maxDim, quality);
+  } catch {
+    return blob;
+  }
+}
+
 export interface ImageAttribution {
   bytes: string;
   resolution: string;

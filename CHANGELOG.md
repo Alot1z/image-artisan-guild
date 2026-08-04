@@ -28,6 +28,29 @@
 ### Planned / open items
 
 - Frontend test suite (none exists; type gate is `tsc` only).
+
+### Phase 9 — Input & Upload Flow Polish (frontend-only, 2026-08-03)
+
+- **Dispatch-layer compression** — new `compressForUpload()` in
+  `src/lib/image-utils.ts` (reuses the previously-unused `downscale`). Applied
+  only to the outbound upload payload via `hostBlob()` in `Inquisitor.tsx`;
+  the local asset blob, EXIF/GPS extraction, palette, perceptual hash, and
+  history are untouched. Files ≤ 1.5 MB within 1600 px are returned as-is so
+  no EXIF is stripped; undecodable blobs fall back to the original unchanged.
+- **Drag & drop wiring** — `DropZone.onFiles` is now live: the overlay
+  captures the drop when active (`pointer-events-auto`), stops propagation so
+  it never double-fires with the window-level handler, and `onDragEnd` resets
+  the drag state. The window drop handler now `preventDefault()`s so the
+  browser no longer navigates to a dropped file.
+- **Privacy warning** — the first dispatch/host attempt shows a vintage-styled
+  notice (only verified facts: upload occurs, metadata may contain a location,
+  the user chooses). Choice persisted to localStorage
+  (`inquisitor.privacy-ack.v1`); nothing is sent until the user continues.
+- **Cropper rotation fix** — `Cropper.tsx` now scales the rotated bounding box
+  to fit the canvas, so 90°/270° rotations no longer clip at the edges.
+  Interaction, aspect presets, touch/pointer behavior, and JPEG output are
+  unchanged. Removed dead offscreen "bright region" code that was computed but
+  never drawn.
 - CI typecheck of the frontend (blocked: `src/convex/_generated/` is
   gitignored and Convex has no offline codegen).
 - Wiring `RequireAuth` around `/dashboard` and the unused `Dashboard` page

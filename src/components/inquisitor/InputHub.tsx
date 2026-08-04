@@ -164,12 +164,31 @@ function TileButton({ tile, onClick }: { tile: typeof TILES[number]; onClick: ()
 }
 
 // Drop zone overlay — separate component for full-page drag detection.
-export function DropZone({ onFiles, active }: { onFiles: (files: File[] | string[]) => void; active: boolean }) {
+// While active it captures the drop itself (pointer-events-auto) and forwards
+// the files via `onFiles`. `onDragEnd` lets the owner reset its drag state,
+// because the overlay stops propagation so the window-level handler never
+// fires for drops that land here (no double ingestion).
+export function DropZone({
+  onFiles,
+  onDragEnd,
+  active,
+}: {
+  onFiles: (files: File[] | string[]) => void;
+  onDragEnd?: () => void;
+  active: boolean;
+}) {
   return (
     <div
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onFiles(Array.from(e.dataTransfer?.files ?? []));
+        onDragEnd?.();
+      }}
       className={cn(
-        "pointer-events-none fixed inset-0 z-40 flex items-center justify-center transition",
-        active ? "opacity-100" : "opacity-0",
+        "fixed inset-0 z-40 flex items-center justify-center transition",
+        active ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
     >
       <div className="archive-card plate-hover flex flex-col items-center gap-3 rounded-lg border-2 border-dashed border-[color-mix(in_oklab,var(--seal)_60%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_85%,transparent)] p-10 shadow-2xl backdrop-blur">

@@ -27,7 +27,7 @@ import { ENGINES } from "@/lib/engines";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { HistoryEntry } from "@/lib/history";
-import { blobToDataUrl } from "@/lib/image-utils";
+import { blobToDataUrl, compressForUpload } from "@/lib/image-utils";
 import { readGeoPoint } from "@/lib/exif";
 import { suggestedEngineIds, commonNameForGeo } from "@/lib/region";
 import type {
@@ -60,11 +60,28 @@ function mergeAggregateResults(prev: AggregateResult[], next: AggregateResult[])
   return [...byUrl.values()];
 }
 
+/** localStorage key remembering the user's privacy-ack choice. */
+const PRIVACY_KEY = "inquisitor.privacy-ack.v1";
+
 export default function Inquisitor() {
   const store = useInquiryStore();
   const [params] = useSearchParams();
   const uploader = useUploader();
   const aggregateSearch = useAction(api.aggregate.aggregateSearch);
+
+  /** Host an asset's blob to Convex storage, compressing ONLY the outbound
+   *  payload. The local asset blob (and its EXIF/GPS/palette/hash) is never
+   *  touched; if compression fails the original blob is used unchanged. */
+  const hostBlob = useCallback(async (blob: Blob, fileName?: string) => {
+    let uploadBlob = blob;
+    try {
+      uploadBlob = await compressForUpload(blob);
+    } catch {
+      // Never let compression break hosting.
+    }
+    const dataUrl = await blobToDataUrl(uploadBlob);
+    return uploader(dataUrl, uploadBlob.type || "image/jpeg", fileName);
+  }, [uploader]);
   const manifestAction = useAction(api.aggregate.enginesManifest);
   const [prompt, setPrompt] = useState("");
   const [uploadingLocal, setUploadingLocal] = useState<Record<string, boolean>>({});
@@ -77,6 +94,15 @@ export default function Inquisitor() {
   const [dragging, setDragging] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<InquiryAsset | null>(null);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(PRIVACY_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const pendingDispatch = useRef<(() => void) | null>(null);
   const dragCounter = useRef(0);
   const autoTickedFor = useRef<Set<string>>(new Set());
 
@@ -127,12 +153,13 @@ export default function Inquisitor() {
         dragCounter.current = 0; setDragging(false);
       }
     };
-    const onDrop = async (e: DragEvent) => {
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault(); // keep the browser from navigating to the dropped file
       dragCounter.current = 0; setDragging(false);
       const files = Array.from(e.dataTransfer?.files ?? []);
       for (const f of files) {
         if (f.type.startsWith("image/")) {
-          await store.add("drag", f);
+          void store.add("drag", f);
         }
       }
     };
@@ -211,8 +238,7 @@ export default function Inquisitor() {
     if (!asset) return;
     setUploadingLocal((p) => ({ ...p, [id]: true }));
     try {
-      const dataUrl = await blobToDataUrl(asset.blob);
-      const url = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
+      const url = await hostBlob(asset.blob, asset.fileName);
       store.setHostedUrl(id, url);
       toast({ title: "Hosted", description: "The plate is now reachable from any catalogue engine." });
     } catch (err) {
@@ -225,7 +251,7 @@ export default function Inquisitor() {
     } finally {
       setUploadingLocal((p) => ({ ...p, [id]: false }));
     }
-  }, [store, uploader]);
+  }, [store, hostBlob]);
 
   const ensureHostThenDispatch = useCallback(async (asset: InquiryAsset, ids: string[]) => {
     setPhase("uploading");
@@ -235,8 +261,7 @@ export default function Inquisitor() {
     let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
     if (!hosted) {
       try {
-        const dataUrl = await blobToDataUrl(asset.blob);
-        hosted = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
+        hosted = await hostBlob(asset.blob, asset.fileName);
         store.setHostedUrl(asset.id, hosted);
       } catch {
         setPhase("failed");
@@ -296,7 +321,7 @@ export default function Inquisitor() {
           ? "No matches returned; every selected engine failed."
           : "No matching folios were returned for this plate.",
     });
-  }, [aggregateSearch, store, uploader, prompt]);
+  }, [aggregateSearch, store, hostBlob, prompt]);
 
   /** Re-run only the engines that failed, merging any new matches into the
    *  existing ledger so successful results are never cleared or duplicated. */
@@ -308,8 +333,7 @@ export default function Inquisitor() {
     let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
     if (!hosted) {
       try {
-        const dataUrl = await blobToDataUrl(asset.blob);
-        hosted = await uploader(dataUrl, asset.blob.type || "image/jpeg", asset.fileName);
+        hosted = await hostBlob(asset.blob, asset.fileName);
         store.setHostedUrl(asset.id, hosted);
       } catch {
         setPhase("complete");
@@ -366,7 +390,34 @@ export default function Inquisitor() {
         ? `${response.results.length} new match${response.results.length === 1 ? "" : "es"} merged into the ledger.`
         : "No additional matches were returned by the retried engines.",
     });
-  }, [aggregateSearch, store, uploader]);
+  }, [aggregateSearch, store, hostBlob]);
+
+  /** First-dispatch privacy gate: the first time the user asks to dispatch or
+   *  host, show a notice with only verified facts (upload occurs, metadata may
+   *  contain a location, the user chooses). Once accepted the choice is
+   *  remembered for this browser so the modal only ever appears once. */
+  const requestDispatch = useCallback((action: () => void) => {
+    if (privacyAcknowledged) {
+      action();
+      return;
+    }
+    pendingDispatch.current = action;
+    setShowPrivacyModal(true);
+  }, [privacyAcknowledged]);
+
+  const acceptPrivacy = useCallback(() => {
+    setPrivacyAcknowledged(true);
+    try { localStorage.setItem(PRIVACY_KEY, "1"); } catch { /* ignore */ }
+    setShowPrivacyModal(false);
+    const action = pendingDispatch.current;
+    pendingDispatch.current = null;
+    if (action) action();
+  }, []);
+
+  const declinePrivacy = useCallback(() => {
+    setShowPrivacyModal(false);
+    pendingDispatch.current = null;
+  }, []);
 
   const handleCropped = useCallback((assetId: string, croppedBlob: Blob) => {
     const source = store.assets.find((item) => item.id === assetId);
@@ -380,8 +431,10 @@ export default function Inquisitor() {
     store.clearHostedUrl(assetId);
     setCropTarget(null);
     toast({ title: "Plate trimmed", description: "The crop was applied; the proxy search is starting again." });
-    void ensureHostThenDispatch({ ...source, blob: croppedBlob, size: croppedBlob.size, hostedUrl: undefined }, source.engines);
-  }, [ensureHostThenDispatch, store]);
+    requestDispatch(() => {
+      void ensureHostThenDispatch({ ...source, blob: croppedBlob, size: croppedBlob.size, hostedUrl: undefined }, source.engines);
+    });
+  }, [ensureHostThenDispatch, requestDispatch, store]);
 
   const activeGeoForEngines = geoPoint;
   const activeRegionLabel = regionLabel ?? undefined;
@@ -504,14 +557,14 @@ export default function Inquisitor() {
                 uploading={uploadingLocal}
                 onEnginesChange={store.setEngines}
                 onHostedUrlReceived={store.setHostedUrl}
-                onUploadRequest={uploadHostFor}
-                onDispatchAll={() => {
+                onUploadRequest={async (id) => { requestDispatch(() => { void uploadHostFor(id); }); }}
+                onDispatchAll={() => requestDispatch(() => {
                   for (const a of store.assets) {
                     if (a.engines.length === 0) continue;
                     void ensureHostThenDispatch(a, a.engines);
                   }
-                }}
-                onDispatchSelected={(ids) => { if (active) void ensureHostThenDispatch(active, ids); }}
+                })}
+                onDispatchSelected={(ids) => requestDispatch(() => { if (active) void ensureHostThenDispatch(active, ids); })}
                 onRetryEngines={(ids) => { void retryFailedEngines(ids); }}
                 prompt={prompt}
                 onPromptChange={setPrompt}
@@ -543,7 +596,43 @@ export default function Inquisitor() {
         )}
       </main>
 
-      <DropZone active={dragging} onFiles={() => undefined} />
+      <DropZone
+        active={dragging}
+        onFiles={(files) => {
+          for (const f of files) {
+            if (typeof f === "string") continue;
+            if (f.type.startsWith("image/")) void store.add("drag", f);
+          }
+        }}
+        onDragEnd={() => { dragCounter.current = 0; setDragging(false); }}
+      />
+
+      {showPrivacyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color-mix(in_oklab,var(--ink)_80%,transparent)]/85 p-2 backdrop-blur">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="archive-card paper-grain relative w-full max-w-md rounded-lg p-6"
+          >
+            <span className="stamp">ℹ</span>
+            <p className="eyebrow">Before the first inquiry</p>
+            <h2 className="mt-1 font-display text-2xl italic">A note on provenance</h2>
+            <ul className="mt-4 space-y-2 font-body-serif text-sm text-[color-mix(in_oklab,var(--ink)_78%,transparent)]">
+              <li className="flex gap-2"><span className="text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]">—</span>The plate will be uploaded to a public URL so the catalogue engines can inspect it.</li>
+              <li className="flex gap-2"><span className="text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]">—</span>Its metadata may include a location.</li>
+              <li className="flex gap-2"><span className="text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]">—</span>Nothing is sent until you choose to continue.</li>
+            </ul>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={declinePrivacy} className="rounded-full border-[color-mix(in_oklab,var(--ink)_30%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] font-display italic">
+                Not now
+              </Button>
+              <Button size="sm" onClick={acceptPrivacy} className="rounded-full bg-[color-mix(in_oklab,var(--seal)_55%,var(--ink)_45%)] font-display text-[color-mix(in_oklab,var(--paper-tint)_95%,transparent)] hover:opacity-90">
+                Continue
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {cropTarget && (
         <Cropper

@@ -65,31 +65,33 @@ export function Cropper({ asset, open, onClose, onCropped }: CropperProps) {
     // Compute image placement (contain)
     const imgAr = img.naturalWidth / img.naturalHeight;
     const cnvAr = w / h;
-    let iw: number, ih: number, ix: number, iy: number;
+    let iw: number, ih: number;
     if (imgAr > cnvAr) {
       iw = w;
       ih = w / imgAr;
-      ix = 0;
-      iy = (h - ih) / 2;
     } else {
       ih = h;
       iw = ih * imgAr;
-      iy = 0;
-      ix = (w - iw) / 2;
     }
 
-    // Rotation transform
-    if (rotation % 360 !== 0) {
-      ctx.save();
-      ctx.translate(w / 2, h / 2);
-      ctx.rotate((rotation * Math.PI) / 180);
-      ctx.translate(-w / 2, -h / 2);
-    }
+    // Rotation-fit: scale the rotated bounding box so the whole image stays
+    // inside the canvas (fixes edge clipping at 90°/270°).
+    const rad = (rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(rad));
+    const sin = Math.abs(Math.sin(rad));
+    const bbW = iw * cos + ih * sin;
+    const bbH = iw * sin + ih * cos;
+    const fit = Math.min(1, w / bbW, h / bbH);
+    const drawW = iw * fit;
+    const drawH = ih * fit;
 
-    // Draw full image (lightened)
+    // Draw full image (lightened), rotated about its centre
+    ctx.save();
     ctx.globalAlpha = 0.65;
-    ctx.drawImage(img, ix, iy, iw, ih);
-    ctx.globalAlpha = 1;
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
 
     // Crop zone in canvas coords (zone is %)
     const zx = (zone.x / 100) * w;
@@ -97,23 +99,7 @@ export function Cropper({ asset, open, onClose, onCropped }: CropperProps) {
     const zw = (zone.w / 100) * w;
     const zh = (zone.h / 100) * h;
 
-    // Draw cropped region bright via an off-screen canvas
-    const off = document.createElement("canvas");
-    off.width = img.naturalWidth;
-    off.height = img.naturalHeight;
-    const offCtx = off.getContext("2d");
-    if (offCtx) {
-      // Map zone to image coords
-      const sx = ((zone.x / 100) * w - ix) / iw * img.naturalWidth;
-      const sy = ((zone.y / 100) * h - iy) / ih * img.naturalHeight;
-      const sw = (zw / iw) * img.naturalWidth;
-      const sh = (zh / ih) * img.naturalHeight;
-      offCtx.drawImage(img, sx, sy, Math.max(1, sw), Math.max(1, sh), 0, 0, off.width, off.height);
-    }
-
-    if (rotation % 360 !== 0) ctx.restore();
-
-    // Light box showing the crop
+    // Light box showing the crop (dims everything outside the zone)
     ctx.globalAlpha = 0.4;
     ctx.save();
     ctx.beginPath();

@@ -51,8 +51,7 @@
   Interaction, aspect presets, touch/pointer behavior, and JPEG output are
   unchanged. Removed dead offscreen "bright region" code that was computed but
   never drawn.
-- CI typecheck of the frontend (blocked: `src/convex/_generated/` is
-  gitignored and Convex has no offline codegen).
+- Frontend typecheck verified with `bun tsc -b --noEmit` (exit 0).
 - Wiring `RequireAuth` around `/dashboard` and the unused `Dashboard` page
   (`src/pages/Dashboard.tsx` — no route references it today).
 

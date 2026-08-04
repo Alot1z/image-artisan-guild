@@ -132,8 +132,6 @@ export function Cropper({ asset, open, onClose, onCropped }: CropperProps) {
       ctx.stroke();
     });
 
-    if (rotation % 360 !== 0) ctx.restore();
-
     // Grid overlay
     ctx.strokeStyle = "rgba(243,226,191,0.15)";
     ctx.lineWidth = 0.5;

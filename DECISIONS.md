@@ -253,3 +253,41 @@ performance regression (single bounded GET per search). Structural change:
 new `tinEyeAdapter.ts`, registration swap in `manager.ts`, `tinEyeStub`
 removed from `stubs.ts`, config `ProxySecrets` extended with
 `tineyeApiKey`/`tineyeApiSecret` and `ProxyConfig` with `tineyeApiUrl`.
+
+## 2026-08-04 | Phase 9: Input & Upload Flow Polish
+
+**Decision**: Frontend-only polish keeps the original local `InquiryAsset.blob`
+as the source for preview, EXIF/GPS extraction, palette extraction,
+perceptual hash generation, OCR, and IndexedDB history, while applying
+`compressForUpload()` only inside the hosting/dispatch path before Convex
+storage receives the outbound payload. The drag overlay now forwards dropped
+files into the existing `store.add("drag", file)` ingestion path without
+falling through to the window drop handler. First hosting/dispatch is gated by
+a user-facing privacy notice that only states verified behavior: upload
+occurs, metadata may include location, and the user chooses whether to
+continue. The cropper preview scales the rotated bounding box to fit the
+canvas and avoids an extra canvas restore call.
+
+**Reason**: The phase objective required dispatch payload compression without
+stripping local EXIF/GPS data, live drag-and-drop wiring, a verified privacy
+warning, and a rotation clipping fix without changing proxy contracts,
+Convex schema, crop interaction, aspect presets, touch behavior, or output
+format.
+
+**Alternatives considered**: (a) Compress during ingestion — rejected because
+canvas re-encoding strips metadata before GPS-driven regional engine
+selection can run; (b) change the proxy or Convex storage contract — rejected
+as out of scope; (c) redesign the cropper around transformed DOM elements —
+rejected because the existing pointer/canvas cropper only needed corrected
+rotated bounds.
+
+**Impact**: No proxy, Convex schema, API contract, dependency, or search state
+machine changes. No measured performance regression; large images may spend
+bounded client CPU time in the existing canvas downscale path before upload.
+Structural changes: `compressForUpload()` wrapper in `src/lib/image-utils.ts`,
+`hostBlob()` dispatch-stage compression in `src/pages/Inquisitor.tsx`,
+live `DropZone.onFiles` forwarding in `src/components/inquisitor/InputHub.tsx`,
+first-dispatch privacy gate in `src/pages/Inquisitor.tsx`, cropper rotation
+fit logic in `src/components/inquisitor/Cropper.tsx`, and a landing-page
+provenance notice in `src/pages/Landing.tsx`. Verified:
+`bun tsc -b --noEmit` exit 0.

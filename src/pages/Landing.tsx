@@ -14,7 +14,7 @@ import {
   Stamp,
   Telescope,
   Pen,
-  Globe2,
+  ShieldAlert,
   Boxes,
   Palette,
   Fingerprint,
@@ -30,8 +30,8 @@ const SOURCES = [
   { icon: Camera, ribbon: "I", title: "Take a photograph", copy: "Use the in-app lens to capture the world as it appears, then trace its origin from a single plate." },
   { icon: Images, ribbon: "II", title: "Select from gallery", copy: "Pick from any frame already kept in your camera roll, and send it around the catalogue." },
   { icon: Link2, ribbon: "III", title: "Fetch from the web", copy: "Paste a URL — the Inquisitor will draw the picture from any reachable corner of the net." },
-  { icon: FolderOpen, ribbon: "IV", title: "Import from files", copy: "Drag a folder, or pick individual dossiers from your device — PDF, RAW, JPG, PNG, WEBP & HEIC." },
-  { icon: ClipboardPaste, ribbon: "V", title: "Paste from clipboard", copy: "Copy an image anywhere, paste it into the workbench — original provenance preserved." },
+  { icon: FolderOpen, ribbon: "IV", title: "Import from files", copy: "Pick individual image dossiers from your device, then decide which engines should receive the dispatch." },
+  { icon: ClipboardPaste, ribbon: "V", title: "Paste from clipboard", copy: "Copy an image anywhere, paste it into the workbench, and inspect its local details before dispatch." },
 ];
 
 const ENGINES = [
@@ -119,8 +119,14 @@ export default function Landing() {
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3 text-sm font-display italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
               <span className="catalogue-tag"><Pen className="mr-1 inline h-3 w-3" /> Field-tested on iOS & Android</span>
-              <span className="catalogue-tag"><Globe2 className="mr-1 inline h-3 w-3" /> Works fully offline</span>
+              <span className="catalogue-tag"><ShieldAlert className="mr-1 inline h-3 w-3" /> Upload warning before dispatch</span>
               <span className="catalogue-tag"><Stamp className="mr-1 inline h-3 w-3" /> No account required</span>
+            </div>
+            <div className="mt-6 max-w-xl rounded-md border border-[color-mix(in_oklab,var(--seal)_35%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_65%,transparent)] p-4">
+              <p className="eyebrow">Provenance notice</p>
+              <p className="mt-2 font-body-serif text-sm leading-relaxed text-[color-mix(in_oklab,var(--ink)_78%,transparent)]">
+                Local inspection happens first. Before the first catalogue dispatch, the workbench now warns that the image will be uploaded and that metadata may contain location information.
+              </p>
             </div>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link to="/dashboard">

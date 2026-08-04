@@ -29,7 +29,7 @@
 
 - Frontend test suite (none exists; type gate is `tsc` only).
 
-### Phase 9 — Input & Upload Flow Polish (frontend-only, 2026-08-03)
+### Phase 9 — Input & Upload Flow Polish (frontend-only, verified complete 2026-08-04)
 
 - **Dispatch-layer compression** — new `compressForUpload()` in
   `src/lib/image-utils.ts` (reuses the previously-unused `downscale`). Applied

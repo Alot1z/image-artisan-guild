@@ -15,6 +15,15 @@
 
 ## Completed — verified working
 
+### Phase completion ledger
+
+- [x] **Phase 9 — Input & Upload Flow Polish**: drag/drop wiring,
+  dispatch-layer compression preserving local EXIF/GPS analysis, first-dispatch
+  privacy warning UI, and cropper rotation bounds fix
+  (`src/pages/Inquisitor.tsx`, `src/components/inquisitor/InputHub.tsx`,
+  `src/lib/image-utils.ts`, `src/lib/inquiry-store.ts`,
+  `src/components/inquisitor/Cropper.tsx`).
+
 ### Frontend (FreeBuff)
 
 | Area | Evidence |

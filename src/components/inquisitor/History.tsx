@@ -6,7 +6,7 @@ import { History as HistoryIcon, Star, Trash2, ExternalLink, RotateCcw, X, Searc
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/engines";
-import { isHostedUrlExpired } from "@/lib/history";
+import { hostedUrlState } from "@/lib/history";
 import type { HistoryEntry } from "@/lib/history";
 
 interface Props {
@@ -175,12 +175,12 @@ export function History({ open, entries, onClose, onToggleFavorite, onDelete, on
                         <>
                           <button
                             onClick={() => window.open(e.hostedUrl, "_blank", "noopener,noreferrer")}
-                            title={isHostedUrlExpired(e.hostedAt) ? "Hosted URL expected to have expired (~24h lifetime)" : "Open hosted URL (~24h lifetime)"}
-                            className={cn("rounded p-1 transition", isHostedUrlExpired(e.hostedAt) ? "text-[color-mix(in_oklab,var(--ink)_30%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_60%,transparent)]" : "text-[color-mix(in_oklab,var(--ink)_45%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_75%,transparent)]")}
+                            title={hostedUrlState(e.hostedAt) === "expired" ? "Hosted URL expected to have expired (~24h lifetime)" : "Open hosted URL (~24h lifetime)"}
+                            className={cn("rounded p-1 transition", hostedUrlState(e.hostedAt) === "expired" ? "text-[color-mix(in_oklab,var(--ink)_30%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_60%,transparent)]" : "text-[color-mix(in_oklab,var(--ink)_45%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_75%,transparent)]")}
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                           </button>
-                          {onRehost && isHostedUrlExpired(e.hostedAt) && (
+                          {onRehost && hostedUrlState(e.hostedAt) === "expired" && (
                             <button
                               onClick={() => void onRehost(e)}
                               title="Re-host this record with a fresh URL"

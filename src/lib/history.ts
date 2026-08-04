@@ -30,14 +30,18 @@ export interface HistoryEntry {
  */
 export const HOSTED_URL_LIFETIME_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/** Tri-state classification of a hosted URL's estimated age. */
+export type HostedUrlState = "active" | "expired" | "unknown";
+
 /**
- * Best-effort staleness check for a hosted URL. Without a recorded hostedAt
- * (pre-Phase-10 records) the age is unknown, so the URL is treated as
- * expired rather than presented as currently usable.
+ * Best-effort age classification for a hosted URL. Without a recorded
+ * hostedAt (pre-Phase-10 records) the age is genuinely unknown, so the URL
+ * must NOT be presented as expired — missing data is not evidence of
+ * expiration.
  */
-export function isHostedUrlExpired(hostedAt?: number): boolean {
-  if (!hostedAt) return true;
-  return Date.now() - hostedAt > HOSTED_URL_LIFETIME_MS;
+export function hostedUrlState(hostedAt?: number): HostedUrlState {
+  if (!hostedAt) return "unknown";
+  return Date.now() - hostedAt > HOSTED_URL_LIFETIME_MS ? "expired" : "active";
 }
 
 const DB_NAME = "inquisitor";

@@ -26,7 +26,7 @@ import {
 import { ENGINES } from "@/lib/engines";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { restoreBlob, isHostedUrlExpired, type HistoryEntry } from "@/lib/history";
+import { restoreBlob, hostedUrlState, type HistoryEntry } from "@/lib/history";
 import { blobToDataUrl, compressForUpload, downscale } from "@/lib/image-utils";
 import { readGeoPoint } from "@/lib/exif";
 import { suggestedEngineIds, commonNameForGeo } from "@/lib/region";
@@ -271,8 +271,10 @@ export default function Inquisitor() {
     setAggregateErrors([]);
     setFailureNotice(null);
     const existingHosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
-    // A hosted URL past its ~24h lifetime is not usable — re-host it.
-    let hosted = existingHosted && !isHostedUrlExpired(store.hostedAt[asset.id] ?? asset.hostedAt)
+    // Only re-host when the URL is confirmed expired past its ~24h lifetime.
+    // A URL of unknown age is reused rather than re-uploaded — missing data
+    // is not evidence of expiration.
+    let hosted = existingHosted && hostedUrlState(store.hostedAt[asset.id] ?? asset.hostedAt) !== "expired"
       ? existingHosted
       : undefined;
     if (!hosted) {
@@ -347,8 +349,10 @@ export default function Inquisitor() {
     setPhase("searching");
     setFailureNotice(null);
     const existingHosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
-    // A hosted URL past its ~24h lifetime is not usable — re-host it.
-    let hosted = existingHosted && !isHostedUrlExpired(store.hostedAt[asset.id] ?? asset.hostedAt)
+    // Only re-host when the URL is confirmed expired past its ~24h lifetime.
+    // A URL of unknown age is reused rather than re-uploaded — missing data
+    // is not evidence of expiration.
+    let hosted = existingHosted && hostedUrlState(store.hostedAt[asset.id] ?? asset.hostedAt) !== "expired"
       ? existingHosted
       : undefined;
     if (!hosted) {

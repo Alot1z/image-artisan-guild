@@ -21,7 +21,7 @@ import {
 } from "@/lib/engines";
 import type { GeoPoint } from "@/lib/exif";
 import type { InquiryAsset } from "@/lib/inquiry-store";
-import { isHostedUrlExpired } from "@/lib/history";
+import { hostedUrlState } from "@/lib/history";
 import type {
   AggregateResult,
   EngineStatus,
@@ -680,13 +680,14 @@ export function Engines({
                   Host image for the proxy
                 </Button>
               )}
-              {hostedUrls[active.id] && !isHostedUrlExpired(hostedAt[active.id]) && (
+              {hostedUrls[active.id] && hostedUrlState(hostedAt[active.id]) !== "expired" && (
                 <div className="flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_60%,transparent)] px-3 py-1 text-[0.7rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_72%,transparent)]">
-                  <ExternalLink className="h-3.5 w-3.5" /> Hosted · ready · ~24h lifetime
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  {hostedUrlState(hostedAt[active.id]) === "unknown" ? "Hosted · age unknown" : "Hosted · ready · ~24h lifetime"}
                   <button onClick={() => navigator.clipboard?.writeText(hostedUrls[active.id])} className="ml-1 rounded px-1 text-[0.65rem] uppercase tracking-wider text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]">copy</button>
                 </div>
               )}
-              {hostedUrls[active.id] && isHostedUrlExpired(hostedAt[active.id]) && (
+              {hostedUrls[active.id] && hostedUrlState(hostedAt[active.id]) === "expired" && (
                 <div className="flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--seal)_12%,transparent)] px-3 py-1 text-[0.7rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
                   <AlertTriangle className="h-3.5 w-3.5 text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />
                   Hosted URL expected to have expired

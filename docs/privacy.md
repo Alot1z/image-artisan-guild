@@ -14,7 +14,7 @@ and pushes everything else to the user's own browser.
 | EXIF + GPS lat/lon | in-memory only | Until the page reloads | Region-aware engine auto-tick |
 | Palette swatches | in-memory only | Until the page reloads | Dynamic UI tinting |
 | Service worker cache | browser cache | Until cleared | Offline app-shell access |
-| Hosted image URL (Convex storage) | Convex storage | Until purged; see below | Required input to URL-based engines |
+| Hosted image URL (Convex storage) | Convex storage | Purged ~24 hours after upload; see below | Required input to URL-based engines |
 
 ## What we DO NOT do
 
@@ -40,18 +40,20 @@ action, which:
 3. Returns the URL to the Inquisitor so it can plug it into the engine's
    URL template.
 
-The hosted URL is **not** automatically purged by the server. To
-satisfy the "no persistent store of user data" promise:
+The hosted URL is **automatically purged** by the server: a scheduled
+cron deletes every hosted image (registry row and storage blob)
+roughly **24 hours after upload** (`HOSTED_TTL_MS`). The UI therefore
+labels hosted URLs as "expected to expire after approximately 24
+hours" and offers a Re-host action — it does not claim a specific
+deletion time, provider-side deletion, or legal erasure from any
+service the URL was shared with.
 
-- The hosted URL is **single-use** in our UI: dispatching once reads
-  the URL once, and after the engine opens, the URL is no longer
-  referenced from the UI (newly dispatched plates get fresh URLs).
-- Users can wipe the registry at any time by clearing IndexedDB and
-  localStorage (the "Records" drawer has a Delete control per
-  record).
-- We expose a server-side cleanup that future versions can run via a
-  scheduled cron (not enabled in the current build to stay
-  reproducible).
+- Users can wipe their local registry at any time by clearing
+  IndexedDB and localStorage (the "Records" drawer has a Delete
+  control per record).
+- The Inquisitor keeps the original plate and its history on-device
+  after the hosted URL expires; only the outbound copy held by Convex
+  storage is purged.
 
 ## Browser-only history
 

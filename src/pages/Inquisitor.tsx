@@ -26,8 +26,8 @@ import {
 import { ENGINES } from "@/lib/engines";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { HistoryEntry } from "@/lib/history";
-import { blobToDataUrl, compressForUpload } from "@/lib/image-utils";
+import { restoreBlob, isHostedUrlExpired, type HistoryEntry } from "@/lib/history";
+import { blobToDataUrl, compressForUpload, downscale } from "@/lib/image-utils";
 import { readGeoPoint } from "@/lib/exif";
 import { suggestedEngineIds, commonNameForGeo } from "@/lib/region";
 import type {
@@ -68,20 +68,32 @@ export default function Inquisitor() {
   const [params] = useSearchParams();
   const uploader = useUploader();
   const aggregateSearch = useAction(api.aggregate.aggregateSearch);
+  /** Privacy mode: when on, the outbound upload copy is deterministically
+   *  stripped of embedded metadata (EXIF/GPS) before it is hosted. */
+  const [privacyMode, setPrivacyMode] = useState(false);
 
   /** Host an asset's blob to Convex storage, compressing ONLY the outbound
    *  payload. The local asset blob (and its EXIF/GPS/palette/hash) is never
-   *  touched; if compression fails the original blob is used unchanged. */
+   *  touched; if compression fails the original blob is used unchanged.
+   *  In privacy mode the outbound copy is additionally re-encoded so
+   *  embedded metadata (EXIF/GPS) is deterministically removed before upload. */
   const hostBlob = useCallback(async (blob: Blob, fileName?: string) => {
     let uploadBlob = blob;
     try {
-      uploadBlob = await compressForUpload(blob);
+      if (privacyMode) {
+        // Deterministic metadata removal: re-encode through a canvas, which
+        // drops all embedded metadata (EXIF/GPS/thumbnail blocks). Only the
+        // upload copy is affected — history continues to store the original.
+        uploadBlob = await downscale(blob, 1600, 0.86);
+      } else {
+        uploadBlob = await compressForUpload(blob);
+      }
     } catch {
       // Never let compression break hosting.
     }
     const dataUrl = await blobToDataUrl(uploadBlob);
     return uploader(dataUrl, uploadBlob.type || "image/jpeg", fileName);
-  }, [uploader]);
+  }, [uploader, privacyMode]);
   const manifestAction = useAction(api.aggregate.enginesManifest);
   const [prompt, setPrompt] = useState("");
   const [uploadingLocal, setUploadingLocal] = useState<Record<string, boolean>>({});
@@ -258,7 +270,11 @@ export default function Inquisitor() {
     setAggregateResults([]);
     setAggregateErrors([]);
     setFailureNotice(null);
-    let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
+    const existingHosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
+    // A hosted URL past its ~24h lifetime is not usable — re-host it.
+    let hosted = existingHosted && !isHostedUrlExpired(store.hostedAt[asset.id] ?? asset.hostedAt)
+      ? existingHosted
+      : undefined;
     if (!hosted) {
       try {
         hosted = await hostBlob(asset.blob, asset.fileName);
@@ -330,7 +346,11 @@ export default function Inquisitor() {
     if (!asset || engineIds.length === 0) return;
     setPhase("searching");
     setFailureNotice(null);
-    let hosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
+    const existingHosted = store.hostedUrls[asset.id] ?? asset.hostedUrl;
+    // A hosted URL past its ~24h lifetime is not usable — re-host it.
+    let hosted = existingHosted && !isHostedUrlExpired(store.hostedAt[asset.id] ?? asset.hostedAt)
+      ? existingHosted
+      : undefined;
     if (!hosted) {
       try {
         hosted = await hostBlob(asset.blob, asset.fileName);
@@ -418,6 +438,25 @@ export default function Inquisitor() {
     setShowPrivacyModal(false);
     pendingDispatch.current = null;
   }, []);
+
+  /** Re-host a history record: restore its original local blob, upload a
+   *  fresh copy through the existing host path, and patch the record's URL.
+   *  The local record and blob are never deleted. */
+  const rehostHistoryEntry = useCallback(async (entry: HistoryEntry) => {
+    try {
+      const blob = await restoreBlob(entry);
+      if (!blob) {
+        toast({ title: "Re-host unavailable", description: "The original plate is no longer stored on this device.", variant: "destructive" });
+        return;
+      }
+      const url = await hostBlob(blob, entry.fileName);
+      store.updateHistoryHosted(entry.id, url);
+      toast({ title: "Re-hosted", description: "A fresh hosted URL was lodged for this record — expected to expire after approximately 24 hours." });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Re-host failed", description: "The plate could not be lodged at the public registry.", variant: "destructive" });
+    }
+  }, [store, hostBlob]);
 
   const handleCropped = useCallback((assetId: string, croppedBlob: Blob) => {
     const source = store.assets.find((item) => item.id === assetId);
@@ -554,7 +593,10 @@ export default function Inquisitor() {
                 assets={store.assets}
                 activeId={store.activeId}
                 hostedUrls={store.hostedUrls}
+                hostedAt={store.hostedAt}
                 uploading={uploadingLocal}
+                privacyMode={privacyMode}
+                onPrivacyModeChange={setPrivacyMode}
                 onEnginesChange={store.setEngines}
                 onHostedUrlReceived={store.setHostedUrl}
                 onUploadRequest={async (id) => { requestDispatch(() => { void uploadHostFor(id); }); }}
@@ -648,7 +690,8 @@ export default function Inquisitor() {
         entries={store.history}
         onClose={() => setHistoryOpen(false)}
         onToggleFavorite={store.toggleFavorite}
-        onDelete={store.deleteHistory}
+        onDelete={(id) => { void store.deleteHistory(id); }}
+        onRehost={rehostHistoryEntry}
         onOpen={async (entry: HistoryEntry) => {
           await store.addFromHistory(entry);
           setHistoryOpen(false);

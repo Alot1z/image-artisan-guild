@@ -21,6 +21,7 @@ import {
 } from "@/lib/engines";
 import type { GeoPoint } from "@/lib/exif";
 import type { InquiryAsset } from "@/lib/inquiry-store";
+import { isHostedUrlExpired } from "@/lib/history";
 import type {
   AggregateResult,
   EngineStatus,
@@ -34,7 +35,12 @@ interface Props {
   assets: InquiryAsset[];
   activeId: string | null;
   hostedUrls: Record<string, string>;
+  /** Local timestamps (ms) of each hosted upload, used to estimate expiry. */
+  hostedAt: Record<string, number>;
   uploading: Record<string, boolean>;
+  /** Privacy mode: strip metadata from the outbound upload copy. */
+  privacyMode: boolean;
+  onPrivacyModeChange: (value: boolean) => void;
   onEnginesChange: (id: string, engines: string[]) => void;
   onHostedUrlReceived: (id: string, url: string) => void;
   onUploadRequest: (id: string) => Promise<void>;
@@ -140,11 +146,12 @@ function PhaseSteps({ phase }: { phase: SearchPhase }) {
 }
 
 export function Engines({
-  assets, activeId, hostedUrls, uploading,
+  assets, activeId, hostedUrls, hostedAt, uploading,
   onEnginesChange, onHostedUrlReceived, onUploadRequest,
   onDispatchAll, onDispatchSelected, onRetryEngines,
   prompt, onPromptChange, notes, onNotesChange,
   autoTickRegional, onAutoTickRegionalChange,
+  privacyMode, onPrivacyModeChange,
   aggregateResults, aggregateBusy, aggregatePhase, aggregateErrors,
   failureNotice = null, manifestStatus = {},
   geoHint, regionLabel,
@@ -390,6 +397,12 @@ export function Engines({
                     sub="Hide PimEyes, FaceCheck.ID, FindClone from the list."
                     on={skipLoginOnly}
                     onChange={setSkipLoginOnly}
+                  />
+                  <ToggleRow
+                    label="Strip metadata from the uploaded copy"
+                    sub="Re-encode the outbound copy to remove EXIF/GPS before hosting. Your local plate and its EXIF keep their metadata."
+                    on={privacyMode}
+                    onChange={onPrivacyModeChange}
                   />
                 </div>
               </div>
@@ -667,10 +680,20 @@ export function Engines({
                   Host image for the proxy
                 </Button>
               )}
-              {hostedUrls[active.id] && (
+              {hostedUrls[active.id] && !isHostedUrlExpired(hostedAt[active.id]) && (
                 <div className="flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklab,var(--ink)_25%,transparent)] bg-[color-mix(in_oklab,var(--paper-tint)_60%,transparent)] px-3 py-1 text-[0.7rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_72%,transparent)]">
-                  <ExternalLink className="h-3.5 w-3.5" /> Hosted · ready
+                  <ExternalLink className="h-3.5 w-3.5" /> Hosted · ready · ~24h lifetime
                   <button onClick={() => navigator.clipboard?.writeText(hostedUrls[active.id])} className="ml-1 rounded px-1 text-[0.65rem] uppercase tracking-wider text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]">copy</button>
+                </div>
+              )}
+              {hostedUrls[active.id] && isHostedUrlExpired(hostedAt[active.id]) && (
+                <div className="flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklab,var(--seal)_45%,transparent)] bg-[color-mix(in_oklab,var(--seal)_12%,transparent)] px-3 py-1 text-[0.7rem] font-body-serif italic text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
+                  <AlertTriangle className="h-3.5 w-3.5 text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]" />
+                  Hosted URL expected to have expired
+                  <Button variant="ghost" size="sm" disabled={uploading[active.id]} onClick={() => onUploadRequest(active.id)} className="h-6 gap-1 rounded-full px-2 text-[0.62rem] font-display italic text-[color-mix(in_oklab,var(--seal)_75%,var(--ink)_25%)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]">
+                    {uploading[active.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                    Re-host
+                  </Button>
                 </div>
               )}
               <Button

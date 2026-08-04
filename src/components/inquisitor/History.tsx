@@ -2,10 +2,11 @@
 // Now with filter chips and a CSS-columns masonry grid.
 
 import { useMemo, useState } from "react";
-import { History as HistoryIcon, Star, Trash2, ExternalLink, X, Search, Filter } from "lucide-react";
+import { History as HistoryIcon, Star, Trash2, ExternalLink, RotateCcw, X, Search, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ENGINES } from "@/lib/engines";
+import { isHostedUrlExpired } from "@/lib/history";
 import type { HistoryEntry } from "@/lib/history";
 
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   onClose: () => void;
   onToggleFavorite: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Re-host a record's plate through the existing upload path. */
+  onRehost?: (entry: HistoryEntry) => Promise<void>;
   onOpen: (entry: HistoryEntry) => void;
 }
 
@@ -28,7 +31,7 @@ const FILTER_CHIPS: { key: FilterKey; label: string; classify: (engines: string[
   { key: "stock", label: "Stock", classify: (ids) => ids.some((id) => ENGINES.find((e) => e.id === id)?.feature === "stock") },
 ];
 
-export function History({ open, entries, onClose, onToggleFavorite, onDelete, onOpen }: Props) {
+export function History({ open, entries, onClose, onToggleFavorite, onDelete, onRehost, onOpen }: Props) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   if (!open) return null;
@@ -169,9 +172,24 @@ export function History({ open, entries, onClose, onToggleFavorite, onDelete, on
                         <Star className={cn("h-3.5 w-3.5", e.favorited && "fill-current")} />
                       </button>
                       {e.hostedUrl && (
-                        <button onClick={() => window.open(e.hostedUrl, "_blank", "noopener,noreferrer")} title="Open hosted URL" className="rounded p-1 text-[color-mix(in_oklab,var(--ink)_45%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_75%,transparent)]">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => window.open(e.hostedUrl, "_blank", "noopener,noreferrer")}
+                            title={isHostedUrlExpired(e.hostedAt) ? "Hosted URL expected to have expired (~24h lifetime)" : "Open hosted URL (~24h lifetime)"}
+                            className={cn("rounded p-1 transition", isHostedUrlExpired(e.hostedAt) ? "text-[color-mix(in_oklab,var(--ink)_30%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_60%,transparent)]" : "text-[color-mix(in_oklab,var(--ink)_45%,transparent)] hover:text-[color-mix(in_oklab,var(--ink)_75%,transparent)]")}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                          {onRehost && isHostedUrlExpired(e.hostedAt) && (
+                            <button
+                              onClick={() => void onRehost(e)}
+                              title="Re-host this record with a fresh URL"
+                              className="rounded p-1 text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)] hover:bg-[color-mix(in_oklab,var(--paper-deep)_55%,transparent)]"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
                       )}
                       <button onClick={() => onDelete(e.id)} title="Delete" className="rounded p-1 text-[color-mix(in_oklab,var(--ink)_45%,transparent)] hover:text-[color-mix(in_oklab,var(--seal)_70%,var(--ink)_30%)]">
                         <Trash2 className="h-3.5 w-3.5" />

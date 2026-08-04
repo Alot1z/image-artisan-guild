@@ -9,6 +9,8 @@ import {
   toggleFavorite as toggleFavoriteStore,
   deleteInquiry as deleteInquiryStore,
   rebuildThumbnails,
+  reconcileOrphanedBlobs,
+  updateHistoryHostedUrl,
   restoreBlob,
   type HistoryEntry,
 } from "@/lib/history";
@@ -35,6 +37,8 @@ export interface InquiryAsset {
   exif: ExifData;
   hash: string;
   hostedUrl?: string;
+  /** Local timestamp (ms) when the hosted URL was created. */
+  hostedAt?: number;
   /** Engines currently chosen for this asset. */
   engines: string[];
 }
@@ -72,6 +76,7 @@ export interface Store {
   assets: InquiryAsset[];
   activeId: string | null;
   hostedUrls: Record<string, string>;
+  hostedAt: Record<string, number>;
   uploading: Record<string, boolean>;
   history: HistoryEntry[];
   busy: boolean;
@@ -86,9 +91,11 @@ export interface Store {
   addFromHistory: (entry: HistoryEntry) => Promise<InquiryAsset | null>;
   setHostedUrl: (id: string, url: string) => void;
   clearHostedUrl: (id: string) => void;
+  /** Patch a history record's hosted URL after a re-host. */
+  updateHistoryHosted: (id: string, url: string) => void;
   recordAll: (extras?: { prompt?: string; tags?: string[] }) => Promise<HistoryEntry[]>;
   toggleFavorite: (id: string) => void;
-  deleteHistory: (id: string) => void;
+  deleteHistory: (id: string) => Promise<void>;
   refreshHistory: () => void;
   replaceAsset: (id: string, partial: Partial<InquiryAsset>) => void;
 }
@@ -97,6 +104,7 @@ export function useInquiryStore(): Store {
   const [assets, setAssets] = useState<InquiryAsset[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hostedUrls, setHostedUrls] = useState<Record<string, string>>({});
+  const [hostedAt, setHostedAt] = useState<Record<string, number>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -104,6 +112,7 @@ export function useInquiryStore(): Store {
 
   useEffect(() => {
     rebuildThumbnails();
+    reconcileOrphanedBlobs();
     setHistory(loadHistory());
   }, []);
 
@@ -181,7 +190,10 @@ export function useInquiryStore(): Store {
       return exists ? prev.map((a) => a.id === asset.id ? { ...a, ...asset } : a) : [...prev, asset];
     });
     setActiveId(asset.id);
-    if (asset.hostedUrl) setHostedUrls((p) => ({ ...p, [asset.id]: asset.hostedUrl! }));
+    if (asset.hostedUrl) {
+      setHostedUrls((p) => ({ ...p, [asset.id]: asset.hostedUrl! }));
+      if (asset.hostedAt) setHostedAt((p) => ({ ...p, [asset.id]: asset.hostedAt! }));
+    }
     return asset;
   }, []);
 
@@ -213,7 +225,8 @@ export function useInquiryStore(): Store {
 
   const setHostedUrl = useCallback((id: string, url: string) => {
     setHostedUrls((prev) => ({ ...prev, [id]: url }));
-    setAssets((prev) => prev.map((a) => a.id === id ? { ...a, hostedUrl: url } : a));
+    setHostedAt((prev) => ({ ...prev, [id]: Date.now() }));
+    setAssets((prev) => prev.map((a) => a.id === id ? { ...a, hostedUrl: url, hostedAt: Date.now() } : a));
   }, []);
 
   const clearHostedUrl = useCallback((id: string) => {
@@ -222,7 +235,16 @@ export function useInquiryStore(): Store {
       delete next[id];
       return next;
     });
-    setAssets((prev) => prev.map((a) => a.id === id ? { ...a, hostedUrl: undefined } : a));
+    setHostedAt((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setAssets((prev) => prev.map((a) => a.id === id ? { ...a, hostedUrl: undefined, hostedAt: undefined } : a));
+  }, []);
+
+  const updateHistoryHosted = useCallback((id: string, url: string) => {
+    setHistory(updateHistoryHostedUrl(id, url));
   }, []);
 
   const recordAll = useCallback(async (extras?: { prompt?: string; tags?: string[] }) => {
@@ -238,20 +260,22 @@ export function useInquiryStore(): Store {
         fileName: asset.fileName,
         notes: asset.notes,
         hostedUrl: hostedUrls[asset.id] ?? asset.hostedUrl,
+        hostedAt: hostedAt[asset.id] ?? asset.hostedAt,
         prompt: extras?.prompt,
       });
       entries.push(entry);
     }
     setHistory((prev) => [...entries, ...prev].slice(0, 200));
     return entries;
-  }, [assets, hostedUrls]);
+  }, [assets, hostedUrls, hostedAt]);
 
   const toggleFavorite = useCallback((id: string) => {
     setHistory(toggleFavoriteStore(id));
   }, []);
 
-  const deleteHistory = useCallback((id: string) => {
-    setHistory(deleteInquiryStore(id));
+  const deleteHistory = useCallback(async (id: string) => {
+    const list = await deleteInquiryStore(id);
+    setHistory(list);
   }, []);
 
   const refreshHistory = useCallback(() => setHistory(loadHistory()), []);
@@ -274,6 +298,7 @@ export function useInquiryStore(): Store {
     assets,
     activeId,
     hostedUrls,
+    hostedAt,
     uploading,
     history,
     busy,
@@ -287,6 +312,7 @@ export function useInquiryStore(): Store {
     addFromHistory,
     setHostedUrl,
     clearHostedUrl,
+    updateHistoryHosted,
     recordAll,
     toggleFavorite,
     deleteHistory,
@@ -329,5 +355,6 @@ export async function hydrateAsset(entry: HistoryEntry): Promise<InquiryAsset | 
     hash,
     engines: entry.engines ?? [...ALL_ENGINE_IDS],
     hostedUrl: entry.hostedUrl,
+    hostedAt: entry.hostedAt,
   };
 }
